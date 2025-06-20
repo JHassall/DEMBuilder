@@ -1,0 +1,56 @@
+<UserControl x:Class="DEMBuilder.Pages.FilterDataPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="450" d:DesignWidth="300">
+    <Grid>
+        <StackPanel Margin="10">
+            <TextBlock Text="Step 3: Clean Up Points for Farm/Field" FontWeight="Bold" FontSize="16"/>
+            <Separator Margin="0,10"/>
+
+            <!-- Altitude Filter -->
+            <TextBlock Text="Altitude (meters)" FontWeight="SemiBold" Margin="0,5,0,0"/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="MinAltitudeTextBox" Grid.Column="0"/>
+                <TextBlock Text="to" Grid.Column="1" Margin="5,0" VerticalAlignment="Center"/>
+                <TextBox x:Name="MaxAltitudeTextBox" Grid.Column="2"/>
+            </Grid>
+
+            <!-- HDOP Filter -->
+            <TextBlock Text="Max HDOP" FontWeight="SemiBold" Margin="0,10,0,0"/>
+            <TextBox x:Name="MaxHdopTextBox"/>
+
+            <!-- Fix Quality Filter -->
+            <TextBlock Text="Fix Quality" FontWeight="SemiBold" Margin="0,10,0,0"/>
+            <ComboBox x:Name="FixQualityComboBox">
+                <ComboBoxItem Content="Any" Tag="-1" IsSelected="True"/>
+                <ComboBoxItem Content="RTK Fixed (4)" Tag="4"/>
+                <ComboBoxItem Content="RTK Float (5)" Tag="5"/>
+                <ComboBoxItem Content="DGPS (2)" Tag="2"/>
+                <ComboBoxItem Content="SPS (1)" Tag="1"/>
+                <ComboBoxItem Content="No Fix (0)" Tag="0"/>
+            </ComboBox>
+
+            <!-- Receiver ID Filter -->
+            <TextBlock Text="Receiver IDs (comma-separated)" FontWeight="SemiBold" Margin="0,10,0,0"/>
+            <TextBox x:Name="ReceiverIdsTextBox" ToolTip="Leave blank to include all receivers"/>
+
+            <!-- Number of Satellites Filter -->
+            <TextBlock Text="Min Number of Satellites" FontWeight="SemiBold" Margin="0,10,0,0"/>
+            <TextBox x:Name="MinSatellitesTextBox"/>
+
+            <Separator Margin="0,20"/>
+
+            <Button x:Name="ApplyFilterButton" Content="Apply Filter" Margin="0,20,0,0" HorizontalAlignment="Left" Click="ApplyFilterButton_Click"/>
+            <TextBlock x:Name="FilterSummaryTextBlock" Margin="0,10,0,0" TextWrapping="Wrap"/>
+
+        </StackPanel>
+    </Grid>
+</UserControl>

@@ -1,0 +1,57 @@
+<UserControl x:Class="DEMBuilder.Pages.BoundaryPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="450" d:DesignWidth="300">
+    <StackPanel Margin="10">
+        <TextBlock Text="Step 2: Select Farm &amp; Field Boundary" FontWeight="Bold" FontSize="16"/>
+        <Separator Margin="0,10"/>
+
+        <TextBlock Text="Define the boundary to select points for a specific farm and field."
+                   TextWrapping="Wrap"/>
+
+        <TextBlock Text="Click 'Start Drawing' and then click on the map to create the boundary polygon. Click 'Finish Drawing' when done."
+                   TextWrapping="Wrap" Margin="0,10,0,0"/>
+
+        <WrapPanel Orientation="Horizontal" Margin="0,20,0,0">
+            <Button x:Name="StartDrawingButton" Content="Start Drawing" Click="StartDrawingButton_Click" Margin="0,0,5,5"
+                    Padding="10,5" MinWidth="90">
+                <Button.Resources>
+                    <Style TargetType="Border">
+                        <Setter Property="CornerRadius" Value="3"/>
+                    </Style>
+                </Button.Resources>
+            </Button>
+            <Button x:Name="FinishDrawingButton" Content="Finish Drawing" Click="FinishDrawingButton_Click" IsEnabled="False" Margin="5,0,5,5"
+                    Padding="10,5" MinWidth="90">
+                <Button.Resources>
+                    <Style TargetType="Border">
+                        <Setter Property="CornerRadius" Value="3"/>
+                    </Style>
+                </Button.Resources>
+            </Button>
+            <Button x:Name="ClearBoundaryButton" Content="Clear" Click="ClearBoundaryButton_Click" Margin="5,0,0,5"
+                    Padding="10,5" MinWidth="75">
+                <Button.Resources>
+                    <Style TargetType="Border">
+                        <Setter Property="CornerRadius" Value="3"/>
+                    </Style>
+                </Button.Resources>
+            </Button>
+        </WrapPanel>
+
+        <Button x:Name="ApplyBoundaryButton" Content="Apply Boundary" Click="ApplyBoundaryButton_Click" Margin="0,10,0,0" IsEnabled="False"
+                Padding="10,5" MinWidth="120" FontWeight="SemiBold">
+            <Button.Resources>
+                <Style TargetType="Border">
+                    <Setter Property="CornerRadius" Value="3"/>
+                </Style>
+            </Button.Resources>
+        </Button>
+
+        <TextBlock x:Name="BoundaryStatusTextBlock" Margin="0,10,0,0" TextWrapping="Wrap"/>
+
+    </StackPanel>
+</UserControl>

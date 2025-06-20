@@ -1,0 +1,27 @@
+<UserControl x:Class="DEMBuilder.Pages.LoadDataPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:DEMBuilder.Pages"
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="300">
+    <StackPanel Margin="10">
+        <TextBlock Text="Step 1: Load GPS Data" FontWeight="Bold" FontSize="16" Margin="0,0,0,10"/>
+        <TextBlock TextWrapping="Wrap" Margin="0,0,0,15">
+            Select the root folder containing your raw GPS data files. The application will search this folder and all subfolders for data.
+        </TextBlock>
+        
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="FolderPathTextBox" IsReadOnly="True" Grid.Column="0" VerticalContentAlignment="Center"/>
+            <Button x:Name="SelectFolderButton" Content="..." Grid.Column="1" Width="30" Margin="5,0,0,0" Click="SelectFolderButton_Click"/>
+        </Grid>
+
+        <CheckBox x:Name="IncludeSubfoldersCheckBox" Content="Include Subfolders" Margin="0,10,0,0" IsChecked="True"/>
+
+    </StackPanel>
+</UserControl>
