@@ -6,8 +6,8 @@
              xmlns:local="clr-namespace:DEMBuilder.Pages"
              mc:Ignorable="d" 
              d:DesignHeight="450" d:DesignWidth="300">
-    <StackPanel Margin="10">
-        <TextBlock Text="Step 1: Load GPS Data" FontWeight="Bold" FontSize="16" Margin="0,0,0,10"/>
+    <StackPanel Margin="20">
+        <TextBlock Text="Step 1: Load GPS Data" FontWeight="Bold" FontSize="24" Margin="0,0,0,20"/>
         <TextBlock TextWrapping="Wrap" Margin="0,0,0,15">
             Select the root folder containing your raw GPS data files. The application will search this folder and all subfolders for data.
         </TextBlock>
@@ -22,6 +22,21 @@
         </Grid>
 
         <CheckBox x:Name="IncludeSubfoldersCheckBox" Content="Include Subfolders" Margin="0,10,0,0" IsChecked="True"/>
+
+        <StackPanel x:Name="ImportPanel" Visibility="Collapsed" Margin="0,15,0,0">
+            <TextBlock x:Name="FileCountTextBlock" Margin="0,0,0,10"/>
+            <Button x:Name="ImportButton" Content="Import Data" Click="ImportButton_Click" Padding="10,5" HorizontalAlignment="Left"/>
+        </StackPanel>
+
+        <StackPanel x:Name="ProgressPanel" Visibility="Collapsed" Margin="0,15,0,0">
+            <TextBlock x:Name="ProgressFileText" Margin="0,0,0,5"/>
+            <ProgressBar x:Name="ImportProgressBar" Height="10" Margin="0,0,0,5"/>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="ProgressPointText" />
+                <TextBlock Text=" | " Margin="5,0,5,0" />
+                <TextBlock x:Name="ProgressFileCountText" />
+            </StackPanel>
+        </StackPanel>
 
     </StackPanel>
 </UserControl>

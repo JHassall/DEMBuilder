@@ -1,0 +1,27 @@
+<UserControl x:Class="DEMBuilder.Pages.ProjectionPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="450" d:DesignWidth="800"
+             >
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Step 4: Project Coordinates" FontWeight="Bold" FontSize="24" Margin="20,20,20,0"/>
+
+        <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="20">
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,20" TextAlignment="Center">
+                This step converts the GPS coordinates (Latitude/Longitude) into a local grid system (Easting/Northing) using the AgOpenGPS projection engine. This is required for accurate DEM generation.
+            </TextBlock>
+            <Button x:Name="ProjectPointsButton" Content="Run Projection" Click="ProjectPointsButton_Click" Padding="10,5" MinWidth="120" />
+            <ProgressBar x:Name="ProjectionProgressBar" Height="20" Margin="0,20,0,0" Visibility="Collapsed" />
+            <TextBlock x:Name="StatusTextBlock" TextAlignment="Center" Margin="0,10,0,0"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

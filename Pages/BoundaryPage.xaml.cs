@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Windows;
-using System.Windows.Controls;
-using GMap.NET; // Added for PointLatLng
+using DEMBuilder.Models;
+using System.Windows.Input;
+using GMap.NET;
 
 namespace DEMBuilder.Pages
 {
@@ -11,7 +12,8 @@ namespace DEMBuilder.Pages
         public event EventHandler? StartDrawing;
         public event EventHandler? FinishDrawing;
         public event EventHandler? ClearBoundary;
-        public event EventHandler<List<PointLatLng>>? BoundaryApplied;
+        public event EventHandler<BoundaryAppliedEventArgs>? BoundaryApplied;
+        public event EventHandler<BoundaryAppliedEventArgs>? DeletePointsRequested;
 
         private List<PointLatLng> _currentBoundaryPoints = new List<PointLatLng>();
 
@@ -26,16 +28,21 @@ namespace DEMBuilder.Pages
             BoundaryStatusTextBlock.Text = "Click on the map to add boundary points.";
             StartDrawingButton.IsEnabled = false;
             FinishDrawingButton.IsEnabled = true;
-            ApplyBoundaryButton.IsEnabled = false; // Ensure apply is disabled when starting
+            FarmFieldInputPanel.IsEnabled = false;
+            DeletePointsButton.IsEnabled = false;
+            ApplyBoundaryButton.IsEnabled = false;
         }
 
         private void FinishDrawingButton_Click(object sender, RoutedEventArgs e)
         {
             FinishDrawing?.Invoke(this, EventArgs.Empty);
-            BoundaryStatusTextBlock.Text = "Boundary definition complete.";
+            BoundaryStatusTextBlock.Text = "Boundary definition complete. Enter Farm/Field info.";
             StartDrawingButton.IsEnabled = true;
             FinishDrawingButton.IsEnabled = false;
-            ApplyBoundaryButton.IsEnabled = _currentBoundaryPoints.Count > 2; // Enable if valid polygon
+            bool hasBoundary = _currentBoundaryPoints.Count > 2;
+            FarmFieldInputPanel.IsEnabled = hasBoundary;
+            DeletePointsButton.IsEnabled = hasBoundary;
+            ApplyBoundaryButton.IsEnabled = hasBoundary;
         }
 
         private void ClearBoundaryButton_Click(object sender, RoutedEventArgs e)
@@ -45,21 +52,63 @@ namespace DEMBuilder.Pages
             BoundaryStatusTextBlock.Text = "Boundary cleared. You can start drawing again.";
             StartDrawingButton.IsEnabled = true;
             FinishDrawingButton.IsEnabled = false;
+            FarmFieldInputPanel.IsEnabled = false;
+            DeletePointsButton.IsEnabled = false;
             ApplyBoundaryButton.IsEnabled = false;
+            FarmNameTextBox.Text = string.Empty;
+            FieldNameTextBox.Text = string.Empty;
         }
 
         private void ApplyBoundaryButton_Click(object sender, RoutedEventArgs e)
         {
-            BoundaryApplied?.Invoke(this, _currentBoundaryPoints);
-            BoundaryStatusTextBlock.Text = $"Boundary applied. Points filtered."; // Or some other status
+            var eventArgs = new BoundaryAppliedEventArgs(
+                new List<PointLatLng>(_currentBoundaryPoints),
+                FarmNameTextBox.Text,
+                FieldNameTextBox.Text
+            );
+            BoundaryApplied?.Invoke(this, eventArgs);
         }
 
-        // This method will be called from MainWindow whenever the polygon is updated
+        private void DeletePointsButton_Click(object sender, RoutedEventArgs e)
+        {
+            var eventArgs = new BoundaryAppliedEventArgs(
+                new List<PointLatLng>(_currentBoundaryPoints),
+                string.Empty, // Farm name not needed
+                string.Empty  // Field name not needed
+            );
+            DeletePointsRequested?.Invoke(this, eventArgs);
+        }
+
         public void SetCurrentBoundaryPoints(List<PointLatLng> points)
         {
             _currentBoundaryPoints = points;
-            // Optionally, re-evaluate ApplyBoundaryButton state here if needed
-            // ApplyBoundaryButton.IsEnabled = _currentBoundaryPoints.Count > 2;
+            if (!FinishDrawingButton.IsEnabled)
+            {
+                bool hasBoundary = _currentBoundaryPoints.Count > 2;
+                FarmFieldInputPanel.IsEnabled = hasBoundary;
+                DeletePointsButton.IsEnabled = hasBoundary;
+                ApplyBoundaryButton.IsEnabled = hasBoundary;
+            }
+        }
+
+        public void ShowStatusMessage(string message)
+        {
+            StatusTextBlock.Text = message;
+            StatusTextBlock.Visibility = Visibility.Visible;
+        }
+
+        public void Reset()
+        {
+            FarmNameTextBox.Text = string.Empty;
+            FieldNameTextBox.Text = string.Empty;
+            BoundaryStatusTextBlock.Text = "Click 'Start Drawing' to define a new boundary.";
+            StatusTextBlock.Visibility = Visibility.Collapsed;
+            StartDrawingButton.IsEnabled = true;
+            FinishDrawingButton.IsEnabled = false;
+            FarmFieldInputPanel.IsEnabled = false;
+            DeletePointsButton.IsEnabled = false;
+            ApplyBoundaryButton.IsEnabled = false;
+            _currentBoundaryPoints.Clear();
         }
     }
 }

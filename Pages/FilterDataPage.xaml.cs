@@ -1,6 +1,7 @@
 using DEMBuilder.Models;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -9,90 +10,95 @@ namespace DEMBuilder.Pages
 {
     public partial class FilterDataPage : System.Windows.Controls.UserControl
     {
-        // Event to notify the main window when the filter has been applied.
-        public event EventHandler<List<GpsPoint>>? FilterApplied;
+        public event EventHandler<FilterAppliedEventArgs>? FilterApplied;
 
-        // Property to hold the full list of points from the main window.
-        public List<GpsPoint> AllGpsPoints { get; set; } = new List<GpsPoint>();
+        private List<GpsPoint> _allGpsPoints = new List<GpsPoint>();
 
         public FilterDataPage()
         {
             InitializeComponent();
         }
 
-        // This method will be called by the MainWindow when this page is navigated to.
-        public void OnNavigatedTo()
+        public void SetGpsPoints(List<GpsPoint>? points)
         {
-            if (AllGpsPoints.Any())
+            _allGpsPoints = points ?? new List<GpsPoint>();
+
+            if (_allGpsPoints.Any())
             {
-                // Populate min/max with actual data range for user convenience
-                var minAlt = AllGpsPoints.Min(p => p.Altitude);
-                var maxAlt = AllGpsPoints.Max(p => p.Altitude);
-                var maxHdop = AllGpsPoints.Max(p => p.Hdop);
+                // Calculate and display HDOP range
+                var minHdop = _allGpsPoints.Min(p => p.Hdop);
+                var maxHdop = _allGpsPoints.Max(p => p.Hdop);
+                HdopRangeText.Text = $"Range: {minHdop:F2} to {maxHdop:F2}";
+                MaxHdopTextBox.Text = Math.Round(maxHdop, 2).ToString(CultureInfo.InvariantCulture);
 
-                MinAltitudeTextBox.Text = Math.Round(minAlt, 2).ToString();
-                MaxAltitudeTextBox.Text = Math.Round(maxAlt, 2).ToString();
-                MaxHdopTextBox.Text = Math.Round(maxHdop, 2).ToString();
-                // ReceiverIdsTextBox is blank by default to include all
+                // Calculate and display Age of Differential range
+                var minAge = _allGpsPoints.Min(p => p.AgeOfDiff);
+                var maxAge = _allGpsPoints.Max(p => p.AgeOfDiff);
+                AgeOfDiffRangeText.Text = $"Range: {minAge:F2} to {maxAge:F2}";
+                MaxAgeOfDiffTextBox.Text = Math.Round(maxAge, 2).ToString(CultureInfo.InvariantCulture);
 
-                FilterSummaryTextBlock.Text = $"Loaded {AllGpsPoints.Count} points. Apply filters to refine the dataset.";
+                FilterSummaryTextBlock.Text = $"Loaded {_allGpsPoints.Count} points. Adjust filters and click 'Apply Filter'.";
+
+                TotalPointsText.Text = $"Total Points: {_allGpsPoints.Count}";
+                FilteredPointsText.Text = "Included Points: N/A";
+                ExcludedPointsText.Text = "Excluded Points: N/A";
             }
             else
             {
+                HdopRangeText.Text = "Range: N/A";
+                AgeOfDiffRangeText.Text = "Range: N/A";
                 FilterSummaryTextBlock.Text = "No points loaded.";
+                TotalPointsText.Text = "Total Points: 0";
+                FilteredPointsText.Text = "Included Points: 0";
+                ExcludedPointsText.Text = "Excluded Points: 0";
             }
         }
 
         private void ApplyFilterButton_Click(object sender, RoutedEventArgs e)
         {
-            if (!AllGpsPoints.Any()) return;
+            if (!_allGpsPoints.Any()) return;
 
-            var originalCount = AllGpsPoints.Count;
-            IEnumerable<GpsPoint> filteredPoints = AllGpsPoints;
+            var originalCount = _allGpsPoints.Count;
+            IEnumerable<GpsPoint> filteredPoints = _allGpsPoints;
 
-            // Altitude Filter
-            if (double.TryParse(MinAltitudeTextBox.Text, out double minAlt) && double.TryParse(MaxAltitudeTextBox.Text, out double maxAlt))
-            {
-                filteredPoints = filteredPoints.Where(p => p.Altitude >= minAlt && p.Altitude <= maxAlt);
-            }
-
-            // HDOP Filter
-            if (double.TryParse(MaxHdopTextBox.Text, out double maxHdop))
+            // 1. Filter by HDOP
+            if (double.TryParse(MaxHdopTextBox.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out double maxHdop))
             {
                 filteredPoints = filteredPoints.Where(p => p.Hdop <= maxHdop);
             }
 
-            // Fix Quality Filter
-            if (FixQualityComboBox.SelectedItem is ComboBoxItem selectedFixItem && int.TryParse(selectedFixItem.Tag.ToString(), out int fixQuality) && fixQuality != -1)
+            // 2. Filter by RTK Status
+            var selectedFixQualities = new HashSet<int>();
+            foreach (System.Windows.Controls.CheckBox checkBox in RtkStatusPanel.Children.OfType<System.Windows.Controls.CheckBox>())
             {
-                filteredPoints = filteredPoints.Where(p => p.FixQuality == fixQuality);
+                if (checkBox.IsChecked == true && int.TryParse(checkBox.Tag.ToString(), out int tag))
+                {
+                    selectedFixQualities.Add(tag);
+                }
             }
 
-            // Receiver ID Filter
-            if (!string.IsNullOrWhiteSpace(ReceiverIdsTextBox.Text))
+            if (selectedFixQualities.Any())
             {
-                var includedIds = new HashSet<int>();
-                var idStrings = ReceiverIdsTextBox.Text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                foreach (var idStr in idStrings)
-                {
-                    if (int.TryParse(idStr, out int id))
-                    {
-                        includedIds.Add(id);
-                    }
-                }
-                if (includedIds.Any())
-                {
-                    filteredPoints = filteredPoints.Where(p => includedIds.Contains(p.ReceiverId));
-                }
+                filteredPoints = filteredPoints.Where(p => selectedFixQualities.Contains(p.FixQuality));
+            }
+
+            // 3. Filter by Age of Differential
+            if (double.TryParse(MaxAgeOfDiffTextBox.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out double maxAge))
+            {
+                filteredPoints = filteredPoints.Where(p => p.AgeOfDiff <= maxAge);
             }
 
             var finalList = filteredPoints.ToList();
+            var excludedList = _allGpsPoints.Except(finalList).ToList();
             var newCount = finalList.Count;
+            var excludedCount = excludedList.Count;
 
-            FilterSummaryTextBlock.Text = $"Filtered from {originalCount} to {newCount} points.";
+            FilterSummaryTextBlock.Text = $"Filter applied. Please click 'Next' to continue.";
+            TotalPointsText.Text = $"Total Points: {originalCount}";
+            FilteredPointsText.Text = $"Included Points: {newCount}";
+            ExcludedPointsText.Text = $"Excluded Points: {excludedCount}";
 
-            // Raise the event to notify the main window of the change
-            FilterApplied?.Invoke(this, finalList);
+            FilterApplied?.Invoke(this, new FilterAppliedEventArgs(finalList, excludedList));
         }
     }
 }

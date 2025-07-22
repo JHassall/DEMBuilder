@@ -1,4 +1,4 @@
-﻿using DEMBuilder.Models;
+using DEMBuilder.Models;
 using DEMBuilder.Pages;
 using DEMBuilder.Services;
 using GMap.NET;
@@ -8,32 +8,51 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using Gdal = MaxRev.Gdal.Core.Gdal;
+
+
 
 namespace DEMBuilder
 {
     public partial class MainWindow : Window
     {
         private readonly NmeaParserService _nmeaParserService;
-        private List<GpsPoint>? _allGpsPoints; // The original, full dataset
-        private List<GpsPoint>? _displayedGpsPoints; // The dataset currently shown on the map
-        private List<GpsPoint>? _pointsBeforeBoundaryFilter; // Backup of points before boundary filter
-        private List<GpsPoint>? _currentFilteredGpsPoints; // Points after filtering (for FilterDataPage)
+        private List<GpsPoint>? _allGpsPoints;
+        private List<GpsPoint>? _displayedGpsPoints;
+        private List<GpsPoint>? _pointsBeforeBoundaryFilter;
+        private List<GpsPoint>? _projectedGpsPoints;
+        private List<GpsPoint>? _currentFilteredGpsPoints;
+        private List<GpsPoint>? _excludedGpsPoints;
+
+        private double _referenceLatitude;
+        private double _referenceLongitude;
+        private string _farmName = string.Empty;
+        private string _fieldName = string.Empty;
+        private System.Windows.Media.Imaging.BitmapSource? _demPreviewBitmap;
 
         private readonly LoadDataPage _loadDataPage;
         private readonly FilterDataPage _filterDataPage;
         private readonly BoundaryPage _boundaryPage;
+        private readonly ProjectionPage _projectionPage;
+        private readonly DemGenerationPage _demGenerationPage;
+        private readonly DemPreviewPage _demPreviewPage;
+        private readonly ExportPage _exportPage;
         private readonly List<System.Windows.Controls.UserControl> _wizardPages;
         private int _currentPageIndex = 0;
 
         private bool _isDrawingBoundary = false;
+        private bool _isBoundaryApplied = false;
         private CustomBoundaryPolygon? _boundaryPolygon;
 
         public MainWindow()
         {
             InitializeComponent();
+            Gdal.ConfigureAll();
+            System.Windows.MessageBox.Show("GDAL configured successfully! We are running on ARM64!");
             InitializeMap();
 
             _nmeaParserService = new NmeaParserService();
@@ -41,20 +60,41 @@ namespace DEMBuilder
             _loadDataPage = new LoadDataPage();
             _filterDataPage = new FilterDataPage();
             _boundaryPage = new BoundaryPage();
+            _projectionPage = new ProjectionPage();
+            _demGenerationPage = new DemGenerationPage();
+            _demPreviewPage = new DemPreviewPage();
+            _exportPage = new ExportPage();
 
             _wizardPages = new List<System.Windows.Controls.UserControl>
             {
                 _loadDataPage,
                 _boundaryPage,
-                _filterDataPage
+                _filterDataPage,
+                _projectionPage,
+                _demGenerationPage,
+                _demPreviewPage,
+                _exportPage
             };
 
-            _loadDataPage.FolderSelected += LoadDataPage_FolderSelected;
-            _filterDataPage.FilterApplied += FilterDataPage_FilterApplied;
+            _loadDataPage.GpsDataLoaded += loadDataPage_GpsDataLoaded;
+
             _boundaryPage.StartDrawing += BoundaryPage_StartDrawing;
             _boundaryPage.FinishDrawing += BoundaryPage_FinishDrawing;
             _boundaryPage.ClearBoundary += BoundaryPage_ClearBoundary;
             _boundaryPage.BoundaryApplied += BoundaryPage_BoundaryApplied;
+            _boundaryPage.DeletePointsRequested += BoundaryPage_DeletePointsRequested;
+
+            _filterDataPage.FilterApplied += FilterDataPage_FilterApplied;
+
+            _projectionPage.ProjectionCompleted += ProjectionPage_ProjectionCompleted;
+
+            _demGenerationPage.DemGenerationCompleted += DemGenerationPage_DemGenerationCompleted;
+
+            _demPreviewPage.GoBackRequested += GoToPreviousPage;
+            _demPreviewPage.GoToNextPage += GoToNextPage;
+
+            _exportPage.RestartRequested += ExportPage_RestartRequested;
+            _exportPage.GoBackRequested += ExportPage_GoBackRequested;
         }
 
         private void InitializeMap()
@@ -72,72 +112,100 @@ namespace DEMBuilder
 
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            WizardFrame.Navigate(_wizardPages[_currentPageIndex]);
+            WizardFrame.Content = _wizardPages[_currentPageIndex];
+            UpdateNavigationButtons();
         }
 
-        private async void LoadDataPage_FolderSelected(object? sender, FolderSelectedEventArgs e)
+        private void loadDataPage_GpsDataLoaded(object? sender, Pages.GpsDataLoadedEventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(e.FolderPath))
-                return;
-
-            try
+            if (e.GpsPoints.Count == 0)
             {
-                Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
-                NextButton.IsEnabled = false;
-
-                _allGpsPoints = await _nmeaParserService.ParseFolderAsync(e.FolderPath, e.IncludeSubfolders);
-                _currentFilteredGpsPoints = null;
-                _pointsBeforeBoundaryFilter = null;
-
-                if (_allGpsPoints == null || !_allGpsPoints.Any())
-                {
-                    System.Windows.MessageBox.Show("No valid GPS data found in the selected folder.", "No Data", MessageBoxButton.OK, MessageBoxImage.Information);
-                    _displayedGpsPoints = new List<GpsPoint>();
-                    UpdateMapWithPoints();
-                    UpdateNavigationButtons();
-                    return;
-                }
-
-                _displayedGpsPoints = new List<GpsPoint>(_allGpsPoints);
-                SampleAndDisplayPoints();
-                UpdateNavigationButtons();
-            }
-            catch (Exception ex)
-            {
-                System.Windows.MessageBox.Show($"Error loading GPS data: {ex.Message}", "Load Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                System.Windows.MessageBox.Show("No valid GPS data points were found in the selected folder.", "No Data Found", MessageBoxButton.OK, MessageBoxImage.Information);
                 _allGpsPoints = null;
-                _displayedGpsPoints = new List<GpsPoint>();
-                UpdateMapWithPoints();
             }
-            finally
+            else
             {
-                Mouse.OverrideCursor = null;
+                _allGpsPoints = e.GpsPoints;
+                _displayedGpsPoints = new List<GpsPoint>(e.GpsPoints);
+                _pointsBeforeBoundaryFilter = new List<GpsPoint>(e.GpsPoints);
+                _currentFilteredGpsPoints = new List<GpsPoint>(e.GpsPoints);
+                _excludedGpsPoints = null;
+                UpdateMapWithPoints(true);
             }
+            UpdateNavigationButtons();
+        }
+
+        private void GoToNextPage(object? sender, EventArgs e)
+        {
+            GoToNextPage();
+        }
+
+        private void GoToPreviousPage(object? sender, EventArgs e)
+        {
+            GoToPreviousPage();
         }
 
         private void NextButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_currentPageIndex < _wizardPages.Count - 1)
-            {
-                _currentPageIndex++;
-
-                if (_wizardPages[_currentPageIndex] is FilterDataPage filterPage)
-                {
-                    filterPage.AllGpsPoints = _displayedGpsPoints ?? new List<GpsPoint>();
-                    filterPage.OnNavigatedTo();
-                }
-
-                WizardFrame.Navigate(_wizardPages[_currentPageIndex]);
-                UpdateNavigationButtons();
-            }
+            GoToNextPage();
         }
 
         private void BackButton_Click(object sender, RoutedEventArgs e)
         {
+            GoToPreviousPage();
+        }
+
+        private void GoToNextPage()
+        {
+            if (_currentPageIndex < _wizardPages.Count - 1)
+            {
+                _currentPageIndex++;
+                WizardFrame.Content = _wizardPages[_currentPageIndex];
+
+                if (_wizardPages[_currentPageIndex] is FilterDataPage)
+                {
+                    _filterDataPage.SetGpsPoints(_currentFilteredGpsPoints);
+                }
+                else if (_wizardPages[_currentPageIndex] is ProjectionPage)
+                {
+                    _projectionPage.SetFilteredPoints(_currentFilteredGpsPoints);
+                }
+                else if (_wizardPages[_currentPageIndex] is DemGenerationPage)
+                {
+                    _demGenerationPage.SetData(_projectedGpsPoints);
+                }
+                else if (_wizardPages[_currentPageIndex] is DemPreviewPage)
+                {
+                    if (_demPreviewBitmap != null)
+                    {
+                        _demPreviewPage.SetDemImage(_demPreviewBitmap);
+                    }
+                }
+                else if (_wizardPages[_currentPageIndex] is ExportPage)
+                {
+                    _exportPage.SetData(_projectedGpsPoints, _referenceLatitude, _referenceLongitude, _farmName, _fieldName);
+                }
+
+                // Hide main navigation when on the last page
+                bool isLastPage = _currentPageIndex == _wizardPages.Count - 1;
+                NextButton.Visibility = isLastPage ? Visibility.Collapsed : Visibility.Visible;
+                BackButton.Visibility = isLastPage ? Visibility.Collapsed : Visibility.Visible;
+
+                UpdateNavigationButtons();
+            }
+        }
+
+        private void GoToPreviousPage()
+        {
             if (_currentPageIndex > 0)
             {
                 _currentPageIndex--;
-                WizardFrame.Navigate(_wizardPages[_currentPageIndex]);
+                WizardFrame.Content = _wizardPages[_currentPageIndex];
+
+                // Ensure main navigation is visible when moving away from the last page
+                NextButton.Visibility = Visibility.Visible;
+                BackButton.Visibility = Visibility.Visible;
+
                 UpdateNavigationButtons();
             }
         }
@@ -146,126 +214,225 @@ namespace DEMBuilder
         {
             BackButton.IsEnabled = _currentPageIndex > 0;
 
-            if (_currentPageIndex >= _wizardPages.Count - 1)
+            bool isNextEnabled = _currentPageIndex < _wizardPages.Count - 1;
+            if (_currentPageIndex == 0) // Load Data
             {
-                NextButton.IsEnabled = false;
+                isNextEnabled &= (_allGpsPoints != null && _allGpsPoints.Any());
             }
-            else if (_currentPageIndex == 0)
+            else if (_currentPageIndex == 1) // Boundary
             {
-                NextButton.IsEnabled = _allGpsPoints != null && _allGpsPoints.Any();
+                isNextEnabled &= _isBoundaryApplied;
             }
-            else
-            {
-                NextButton.IsEnabled = true;
-            }
+            NextButton.IsEnabled = isNextEnabled;
         }
 
-        private void FilterDataPage_FilterApplied(object? sender, List<GpsPoint> filteredPoints)
+        private void FilterDataPage_FilterApplied(object? sender, FilterAppliedEventArgs e)
         {
-            _currentFilteredGpsPoints = filteredPoints;
-            _displayedGpsPoints = new List<GpsPoint>(_currentFilteredGpsPoints);
-            _pointsBeforeBoundaryFilter = null;
-            UpdateMapWithPoints();
+            _currentFilteredGpsPoints = e.FilteredPoints;
+            _excludedGpsPoints = e.ExcludedPoints;
+            _displayedGpsPoints = e.FilteredPoints.Concat(e.ExcludedPoints).ToList();
+            UpdateMapWithPoints(false); // Don't zoom, just refresh colors
         }
 
-        private void UpdateMapWithPoints()
+        private void ProjectionPage_ProjectionCompleted(object? sender, ProjectionCompletedEventArgs e)
+        {
+            _projectedGpsPoints = e.ProjectedPoints;
+            _referenceLatitude = e.ReferenceLatitude;
+            _referenceLongitude = e.ReferenceLongitude;
+        }
+
+        private void DemGenerationPage_DemGenerationCompleted(object? sender, DemGenerationCompletedEventArgs e)
+        {
+            _demPreviewBitmap = new Services.Dem.DemGenerationService().CreateDemBitmap(e.RasterData);
+            GoToNextPage();
+        }
+
+        private void ExportPage_RestartRequested(object? sender, EventArgs e)
+        {
+            // Reset state to allow for a new boundary selection
+            _isDrawingBoundary = false;
+            _isBoundaryApplied = false;
+            _boundaryPolygon = null;
+            _projectedGpsPoints = null;
+            _excludedGpsPoints = null;
+            _currentFilteredGpsPoints = _allGpsPoints;
+            _displayedGpsPoints = _allGpsPoints;
+
+            // Go back to the Boundary Page (index 1)
+            _currentPageIndex = 1;
+            WizardFrame.Content = _wizardPages[_currentPageIndex];
+
+            // Restore main navigation buttons
+            NextButton.Visibility = Visibility.Visible;
+            BackButton.Visibility = Visibility.Visible;
+
+            UpdateNavigationButtons();
+            UpdateMapWithPoints(true);
+            _boundaryPage.Reset();
+        }
+
+        private void ExportPage_GoBackRequested(object? sender, EventArgs e)
+        {
+            GoToPreviousPage();
+        }
+
+        private void UpdateMapWithPoints(bool zoomToFit)
         {
             MainMap.Markers.Clear();
-            if (_displayedGpsPoints == null || !_displayedGpsPoints.Any()) return;
 
-            const int maxPointsToShow = 5000;
-            var pointsToShow = _displayedGpsPoints;
-            if (_displayedGpsPoints.Count > maxPointsToShow)
+            if (_displayedGpsPoints == null || !_displayedGpsPoints.Any())
+                return;
+
+            var pointsToDisplay = _displayedGpsPoints;
+            // Only sample points for performance on the initial load and boundary pages.
+            // On the filter page (index 2) and beyond, show all points.
+            if (_displayedGpsPoints.Count > 10000 && _currentPageIndex < 2)
             {
-                int step = _displayedGpsPoints.Count / maxPointsToShow;
-                pointsToShow = _displayedGpsPoints.Where((p, i) => i % step == 0).ToList();
+                // Shuffle before taking a sample to get a representative view
+                var random = new Random();
+                pointsToDisplay = _displayedGpsPoints.OrderBy(p => random.Next()).Take(10000).ToList();
             }
 
-            foreach (var point in pointsToShow)
+            var excludedSet = _excludedGpsPoints != null ? new HashSet<GpsPoint>(_excludedGpsPoints) : null;
+
+            foreach (var point in pointsToDisplay)
             {
+                SolidColorBrush brush;
+                if (excludedSet != null)
+                {
+                    brush = new SolidColorBrush(excludedSet.Contains(point) ? Colors.Red : Colors.Green);
+                }
+                else
+                {
+                    // Before filtering, color by GPS Fix Quality
+                    switch (point.FixQuality)
+                    {
+                        case 4: // RTK Fixed
+                        case 5: // RTK Float
+                            brush = new SolidColorBrush(Colors.Green);
+                            break;
+                        default:
+                            brush = new SolidColorBrush(Colors.Yellow);
+                            break;
+                    }
+                }
+
                 var marker = new GMapMarker(point.AsPointLatLng())
                 {
                     Shape = new Ellipse
                     {
                         Width = 4,
                         Height = 4,
-                        Fill = System.Windows.Media.Brushes.Red,
-                        Stroke = System.Windows.Media.Brushes.DarkRed,
-                        StrokeThickness = 1
+                        Fill = brush,
+                        Stroke = brush
                     }
                 };
                 MainMap.Markers.Add(marker);
             }
 
-            MainMap.ZoomAndCenterMarkers(null);
+            if (zoomToFit && MainMap.Markers.Any())
+            {
+                MainMap.ZoomAndCenterMarkers(null);
+            }
         }
 
-        private void BoundaryPage_StartDrawing(object? sender, System.EventArgs e)
+        private void BoundaryPage_StartDrawing(object? sender, EventArgs e)
         {
             _isDrawingBoundary = true;
-            MainMap.CanDragMap = false;
-
             if (_boundaryPolygon != null)
             {
                 MainMap.Markers.Remove(_boundaryPolygon);
             }
-
             _boundaryPolygon = new CustomBoundaryPolygon(new List<PointLatLng>());
             MainMap.Markers.Add(_boundaryPolygon);
         }
 
-        private void BoundaryPage_FinishDrawing(object? sender, System.EventArgs e)
+        private void BoundaryPage_FinishDrawing(object? sender, EventArgs e)
         {
             _isDrawingBoundary = false;
-            MainMap.CanDragMap = true;
         }
 
-        private void BoundaryPage_ClearBoundary(object? sender, System.EventArgs e)
+        private void BoundaryPage_ClearBoundary(object? sender, EventArgs e)
         {
-            if (_boundaryPolygon != null)
-            {
-                MainMap.Markers.Remove(_boundaryPolygon);
-                _boundaryPolygon = null;
-            }
             _isDrawingBoundary = false;
-            MainMap.CanDragMap = true;
-
-            if (_allGpsPoints != null)
-            {
-                _displayedGpsPoints = new List<GpsPoint>(_allGpsPoints);
-            }
-            else
-            {
-                _displayedGpsPoints = new List<GpsPoint>();
-            }
-            _pointsBeforeBoundaryFilter = null;
-            _currentFilteredGpsPoints = null;
-            SampleAndDisplayPoints();
+            _isBoundaryApplied = false;
+            MainMap.Markers.Clear();
+            _boundaryPolygon = null;
+            _displayedGpsPoints = _pointsBeforeBoundaryFilter;
+            _currentFilteredGpsPoints = _pointsBeforeBoundaryFilter;
+            _excludedGpsPoints = null;
+            UpdateMapWithPoints(true);
+            UpdateNavigationButtons();
         }
 
-        private void BoundaryPage_BoundaryApplied(object? sender, List<PointLatLng> boundaryPoints)
+        private void BoundaryPage_DeletePointsRequested(object? sender, BoundaryAppliedEventArgs e)
         {
             if (_allGpsPoints == null || !_allGpsPoints.Any())
             {
-                System.Windows.MessageBox.Show("No GPS data loaded to define a boundary.", "No Data", MessageBoxButton.OK, MessageBoxImage.Warning);
+                System.Windows.MessageBox.Show("No GPS data available to delete.", "No Data", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                 return;
             }
 
-            if (boundaryPoints.Count < 3)
+            var pointsToDelete = _allGpsPoints.Where(p => IsPointInPolygon(p.AsPointLatLng(), e.BoundaryPoints)).ToList();
+
+            if (pointsToDelete.Count == 0)
             {
-                System.Windows.MessageBox.Show("Please define a valid boundary with at least 3 points.", "Invalid Boundary", MessageBoxButton.OK, MessageBoxImage.Warning);
+                System.Windows.MessageBox.Show("No points found within the selected boundary to delete.", "No Points Found", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
                 return;
             }
 
+            var result = System.Windows.MessageBox.Show($"Are you sure you want to permanently delete {pointsToDelete.Count} points? This action cannot be undone.",
+                "Confirm Deletion", System.Windows.MessageBoxButton.OKCancel, System.Windows.MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.OK)
+            {
+                int deletedCount = pointsToDelete.Count;
+                _allGpsPoints.RemoveAll(p => pointsToDelete.Contains(p));
+
+                // After deleting, we are back to a state with no boundary applied.
+                _displayedGpsPoints = new List<GpsPoint>(_allGpsPoints);
+                _pointsBeforeBoundaryFilter = null; 
+                _isBoundaryApplied = false;
+
+                // Now, update the map with the new set of points
+                UpdateMapWithPoints(true);
+
+                // Reset the boundary page UI and clear the boundary polygon from the map
+                _boundaryPage.Reset();
+                if (_boundaryPolygon != null)
+                {
+                    MainMap.Markers.Remove(_boundaryPolygon);
+                    _boundaryPolygon = null;
+                }
+
+                _boundaryPage.ShowStatusMessage($"{deletedCount} points were permanently deleted.");
+            }
+        }
+
+        private void BoundaryPage_BoundaryApplied(object? sender, BoundaryAppliedEventArgs e)
+        {
+            if (_allGpsPoints == null || !_allGpsPoints.Any())
+            {
+                System.Windows.MessageBox.Show("No GPS data loaded to define a boundary.", "No Data", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+            if (e.BoundaryPoints.Count < 3)
+            {
+                System.Windows.MessageBox.Show("Please define a valid boundary with at least 3 points.", "Invalid Boundary", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            _farmName = e.FarmName;
+            _fieldName = e.FieldName;
             _pointsBeforeBoundaryFilter = new List<GpsPoint>(_allGpsPoints);
-
-            var filteredByBoundaryPoints = _allGpsPoints.Where(p => IsPointInPolygon(p.AsPointLatLng(), boundaryPoints)).ToList();
-
+            var filteredByBoundaryPoints = _allGpsPoints.Where(p => IsPointInPolygon(p.AsPointLatLng(), e.BoundaryPoints)).ToList();
             _displayedGpsPoints = filteredByBoundaryPoints;
             _currentFilteredGpsPoints = new List<GpsPoint>(_displayedGpsPoints);
-            UpdateMapWithPoints();
-
-            System.Windows.MessageBox.Show($"{_displayedGpsPoints.Count} points selected within the boundary.", "Boundary Applied", MessageBoxButton.OK, MessageBoxImage.Information);
+            _excludedGpsPoints = null;
+            UpdateMapWithPoints(true);
+            _boundaryPage.ShowStatusMessage($"{_displayedGpsPoints.Count} points selected for Farm: '{_farmName}', Field: '{_fieldName}'.");
+            _isBoundaryApplied = true;
+            UpdateNavigationButtons();
         }
 
         private void MainMap_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -274,13 +441,11 @@ namespace DEMBuilder
             {
                 var point = e.GetPosition(MainMap);
                 var latLng = MainMap.FromLocalToLatLng((int)point.X, (int)point.Y);
-
                 var currentPoints = new List<PointLatLng>(_boundaryPolygon.Points);
                 currentPoints.Add(latLng);
                 MainMap.Markers.Remove(_boundaryPolygon);
                 _boundaryPolygon = new CustomBoundaryPolygon(currentPoints);
                 MainMap.Markers.Add(_boundaryPolygon);
-
                 _boundaryPage.SetCurrentBoundaryPoints(_boundaryPolygon.Points.ToList());
                 e.Handled = true;
             }
@@ -290,7 +455,6 @@ namespace DEMBuilder
         {
             bool isInside = false;
             if (polygon.Count < 3) return false;
-
             for (int i = 0, j = polygon.Count - 1; i < polygon.Count; j = i++)
             {
                 if (((polygon[i].Lat > point.Lat) != (polygon[j].Lat > point.Lat)) &&
@@ -311,19 +475,6 @@ namespace DEMBuilder
         {
             MainMap.Zoom -= 1;
         }
-
-        private void SampleAndDisplayPoints()
-        {
-            const int maxPointsToShow = 5000;
-            var pointsToShow = _displayedGpsPoints;
-            if (_displayedGpsPoints.Count > maxPointsToShow)
-            {
-                int step = _displayedGpsPoints.Count / maxPointsToShow;
-                pointsToShow = _displayedGpsPoints.Where((p, i) => i % step == 0).ToList();
-            }
-
-            UpdateMapWithPoints();
-        }
     }
 
     public static class GpsPointExtensions
@@ -336,9 +487,7 @@ namespace DEMBuilder
 
     public class CustomBoundaryPolygon : GMapPolygon
     {
-        public CustomBoundaryPolygon(IEnumerable<PointLatLng> points) : base(points)
-        {
-        }
+        public CustomBoundaryPolygon(IEnumerable<PointLatLng> points) : base(points) { }
 
         public override Path CreatePath(List<System.Windows.Point> localPath, bool add)
         {
@@ -346,7 +495,7 @@ namespace DEMBuilder
             path.Stroke = System.Windows.Media.Brushes.Blue;
             path.StrokeThickness = 3;
             path.StrokeLineJoin = PenLineJoin.Round;
-            path.Fill = new SolidColorBrush(System.Windows.Media.Colors.Blue) { Opacity = 0.2 };
+            path.Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Blue) { Opacity = 0.2 };
             return path;
         }
     }

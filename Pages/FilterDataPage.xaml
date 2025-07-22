@@ -4,53 +4,51 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              mc:Ignorable="d"
-             d:DesignHeight="450" d:DesignWidth="300">
+             d:DesignHeight="500" d:DesignWidth="350">
     <Grid>
-        <StackPanel Margin="10">
-            <TextBlock Text="Step 3: Clean Up Points for Farm/Field" FontWeight="Bold" FontSize="16"/>
-            <Separator Margin="0,10"/>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="20">
+                <TextBlock Text="Step 3: Filter Points" FontWeight="Bold" FontSize="24" Margin="0,0,0,20"/>
 
-            <!-- Altitude Filter -->
-            <TextBlock Text="Altitude (meters)" FontWeight="SemiBold" Margin="0,5,0,0"/>
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBox x:Name="MinAltitudeTextBox" Grid.Column="0"/>
-                <TextBlock Text="to" Grid.Column="1" Margin="5,0" VerticalAlignment="Center"/>
-                <TextBox x:Name="MaxAltitudeTextBox" Grid.Column="2"/>
-            </Grid>
+                <!-- HDOP Filter -->
+                <GroupBox Header="HDOP (Horizontal Dilution of Precision)" FontWeight="SemiBold" Margin="0,0,0,10">
+                    <StackPanel Margin="5">
+                        <TextBlock x:Name="HdopRangeText" Text="Range: N/A" FontStyle="Italic" Margin="0,0,0,5"/>
+                        <TextBlock Text="Filter to HDOP less than:" Margin="0,5,0,0"/>
+                        <TextBox x:Name="MaxHdopTextBox"/>
+                    </StackPanel>
+                </GroupBox>
 
-            <!-- HDOP Filter -->
-            <TextBlock Text="Max HDOP" FontWeight="SemiBold" Margin="0,10,0,0"/>
-            <TextBox x:Name="MaxHdopTextBox"/>
+                <!-- RTK Status Filter -->
+                <GroupBox Header="RTK Fix Status" FontWeight="SemiBold" Margin="0,0,0,10">
+                    <StackPanel Margin="5" x:Name="RtkStatusPanel">
+                        <CheckBox Content="RTK Fix (4)" Tag="4" IsChecked="True"/>
+                        <CheckBox Content="RTK Float (5)" Tag="5" IsChecked="True"/>
+                        <CheckBox Content="Differential GPS (2)" Tag="2"/>
+                        <CheckBox Content="SPS (1)" Tag="1"/>
+                        <CheckBox Content="No Fix (0)" Tag="0"/>
+                    </StackPanel>
+                </GroupBox>
 
-            <!-- Fix Quality Filter -->
-            <TextBlock Text="Fix Quality" FontWeight="SemiBold" Margin="0,10,0,0"/>
-            <ComboBox x:Name="FixQualityComboBox">
-                <ComboBoxItem Content="Any" Tag="-1" IsSelected="True"/>
-                <ComboBoxItem Content="RTK Fixed (4)" Tag="4"/>
-                <ComboBoxItem Content="RTK Float (5)" Tag="5"/>
-                <ComboBoxItem Content="DGPS (2)" Tag="2"/>
-                <ComboBoxItem Content="SPS (1)" Tag="1"/>
-                <ComboBoxItem Content="No Fix (0)" Tag="0"/>
-            </ComboBox>
+                <!-- Age of Differential Filter -->
+                <GroupBox Header="Age of Differential Data (seconds)" FontWeight="SemiBold">
+                    <StackPanel Margin="5">
+                        <TextBlock x:Name="AgeOfDiffRangeText" Text="Range: N/A" FontStyle="Italic" Margin="0,0,0,5"/>
+                        <TextBlock Text="Filter to Age less than:" Margin="0,5,0,0"/>
+                        <TextBox x:Name="MaxAgeOfDiffTextBox"/>
+                    </StackPanel>
+                </GroupBox>
 
-            <!-- Receiver ID Filter -->
-            <TextBlock Text="Receiver IDs (comma-separated)" FontWeight="SemiBold" Margin="0,10,0,0"/>
-            <TextBox x:Name="ReceiverIdsTextBox" ToolTip="Leave blank to include all receivers"/>
+                <Button x:Name="ApplyFilterButton" Content="Apply Filter" Margin="0,20,0,0" HorizontalAlignment="Left" Click="ApplyFilterButton_Click"/>
+                <TextBlock x:Name="FilterSummaryTextBlock" Margin="0,10,0,0" TextWrapping="Wrap"/>
 
-            <!-- Number of Satellites Filter -->
-            <TextBlock Text="Min Number of Satellites" FontWeight="SemiBold" Margin="0,10,0,0"/>
-            <TextBox x:Name="MinSatellitesTextBox"/>
+                <StackPanel Margin="0,10,0,0">
+                    <TextBlock x:Name="TotalPointsText" Text="Total Points: 0"/>
+                    <TextBlock x:Name="FilteredPointsText" Text="Included Points: 0"/>
+                    <TextBlock x:Name="ExcludedPointsText" Text="Excluded Points: 0"/>
+                </StackPanel>
 
-            <Separator Margin="0,20"/>
-
-            <Button x:Name="ApplyFilterButton" Content="Apply Filter" Margin="0,20,0,0" HorizontalAlignment="Left" Click="ApplyFilterButton_Click"/>
-            <TextBlock x:Name="FilterSummaryTextBlock" Margin="0,10,0,0" TextWrapping="Wrap"/>
-
-        </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
     </Grid>
 </UserControl>

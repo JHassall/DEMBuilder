@@ -9,8 +9,11 @@ namespace DEMBuilder.Models
         public int FixQuality { get; }
         public int NumberOfSatellites { get; }
         public double Hdop { get; } // Horizontal Dilution of Precision
+        public double AgeOfDiff { get; }
+        public double Easting { get; set; }
+        public double Northing { get; set; }
 
-        public GpsPoint(int receiverId, double latitude, double longitude, double altitude, int fixQuality, int numberOfSatellites, double hdop)
+        public GpsPoint(int receiverId, double latitude, double longitude, double altitude, int fixQuality, int numberOfSatellites, double hdop, double ageOfDiff)
         {
             ReceiverId = receiverId;
             Latitude = latitude;
@@ -19,6 +22,7 @@ namespace DEMBuilder.Models
             FixQuality = fixQuality;
             NumberOfSatellites = numberOfSatellites;
             Hdop = hdop;
+            AgeOfDiff = ageOfDiff;
         }
     }
 }
