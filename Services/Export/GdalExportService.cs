@@ -13,172 +13,17 @@ namespace DEMBuilder.Services.Export
 {
     public class GdalExportService
     {
-        private bool _gdalInitialized = false;
-
-        // P/Invoke declarations for Windows DLL loading
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool SetDllDirectory(string lpPathName);
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        private static extern bool AddDllDirectory(string NewDirectory);
-
         public GdalExportService()
         {
-            ConfigureNativeDllPaths();
-            InitializeGdal();
+            // Use unified GDAL manager for proper initialization
+            GdalManager.EnsureInitialized();
         }
 
-        private void ConfigureNativeDllPaths()
-        {
-            try
-            {
-                var assemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-                var assemblyDir = Path.GetDirectoryName(assemblyPath) ?? "";
-                
-                // Try to find the GDAL native DLL directory
-                var potentialNativePaths = new[]
-                {
-                    Path.Combine(assemblyDir, "gdal", "x64"),
-                    Path.Combine(assemblyDir, "gdal", "x86"),
-                    Path.Combine(assemblyDir, "runtimes", "win-x64", "native"),
-                    Path.Combine(assemblyDir, "x64"),
-                    assemblyDir // Current directory as fallback
-                };
-                
-                foreach (var path in potentialNativePaths)
-                {
-                    try
-                    {
-                        var normalizedPath = Path.GetFullPath(path);
-                        
-                        if (Directory.Exists(normalizedPath))
-                        {
-                            // Check if gdal.dll exists in this directory
-                            var gdalDllPath = Path.Combine(normalizedPath, "gdal.dll");
-                            if (File.Exists(gdalDllPath))
-                            {
-                                // Add this directory to the DLL search path
-                                AddDllDirectory(normalizedPath);
-                                
-                                // Also add to PATH environment variable
-                                var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
-                                if (!currentPath.Contains(normalizedPath))
-                                {
-                                    Environment.SetEnvironmentVariable("PATH", $"{normalizedPath};{currentPath}");
-                                }
-                                
-                                // Set as the primary DLL directory
-                                SetDllDirectory(normalizedPath);
-                                
-                                return; // Use the first valid path found
-                            }
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        // Continue to next path if this one fails
-                        continue;
-                    }
-                }
-            }
-            catch (Exception)
-            {
-                // If native DLL configuration fails, GDAL initialization will handle the error
-            }
-        }
 
-        private void InitializeGdal()
-        {
-            if (_gdalInitialized)
-            {
-                return;
-            }
 
-            try
-            {
-                // Configure GDAL data paths
-                ConfigureGdalPaths();
-                
-                // Register all GDAL drivers
-                Gdal.AllRegister();
-                
-                // Test GDAL functionality by trying to get a driver
-                var geoTiffDriver = Gdal.GetDriverByName("GTiff");
-                if (geoTiffDriver == null)
-                {
-                    throw new InvalidOperationException("GeoTIFF driver not available after GDAL initialization");
-                }
 
-                _gdalInitialized = true;
-            }
-            catch (Exception ex)
-            {
-                var errorMsg = $"Failed to initialize GDAL: {ex.Message}. " +
-                    $"GDAL_DATA: {Environment.GetEnvironmentVariable("GDAL_DATA") ?? "not set"}, " +
-                    $"Assembly location: {System.Reflection.Assembly.GetExecutingAssembly().Location}";
-                throw new InvalidOperationException(errorMsg, ex);
-            }
-        }
 
-        private void ConfigureGdalPaths()
-        {
-            // Check if GDAL_DATA is already set
-            var gdalData = Environment.GetEnvironmentVariable("GDAL_DATA");
-            
-            if (!string.IsNullOrEmpty(gdalData) && Directory.Exists(gdalData))
-            {
-                return; // Already configured
-            }
 
-            // Try multiple potential GDAL data locations
-            var assemblyPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-            var assemblyDir = Path.GetDirectoryName(assemblyPath) ?? "";
-            
-            var potentialPaths = new[]
-            {
-                Path.Combine(assemblyDir, "gdal", "data"),
-                Path.Combine(assemblyDir, "gdal-data"),
-                Path.Combine(assemblyDir, "runtimes", "win-x64", "native", "gdal", "data"),
-                Path.Combine(assemblyDir, "x64", "gdal", "data"),
-                Path.Combine(assemblyDir, "..\\..\\..\\packages", "GDAL", "gdal", "data"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages", "gdal", "3.8.4", "gdal", "data")
-            };
-
-            foreach (var path in potentialPaths)
-            {
-                try
-                {
-                    var normalizedPath = Path.GetFullPath(path);
-                    
-                    if (Directory.Exists(normalizedPath))
-                    {
-                        // Verify the path contains expected GDAL data files
-                        var testFiles = new[] { "epsg.wkt", "gdalicon.png", "default.rsc" };
-                        var foundFiles = testFiles.Where(file => File.Exists(Path.Combine(normalizedPath, file))).ToArray();
-                        
-                        if (foundFiles.Length > 0)
-                        {
-                            try
-                            {
-                                Gdal.SetConfigOption("GDAL_DATA", normalizedPath);
-                                Environment.SetEnvironmentVariable("GDAL_DATA", normalizedPath);
-                                return; // Success - exit the method
-                            }
-                            catch (Exception)
-                            {
-                                // Continue to next path if this one fails
-                                continue;
-                            }
-                        }
-                    }
-                }
-                catch (Exception)
-                {
-                    continue;
-                }
-            }
-        }
 
         public async Task<bool> ExportDemToGeoTiffAsync(
             double[,] rasterData, 
@@ -502,8 +347,8 @@ namespace DEMBuilder.Services.Export
 
         public void Dispose()
         {
-            // GDAL cleanup is handled automatically
-            _gdalInitialized = false;
+            // GDAL cleanup is handled by GdalManager
+            // No local cleanup needed
         }
     }
 }

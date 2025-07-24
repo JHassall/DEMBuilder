@@ -131,7 +131,7 @@ namespace DEMBuilder.Services.Dem
             });
         }
 
-        private (IMesh mesh, double[] altitudeData) CreateTin(List<GpsPoint> points)
+        public (IMesh mesh, double[] altitudeData) CreateTin(List<GpsPoint> points)
         {
             var polygon = new Polygon();
             var altitudes = new Dictionary<int, double>();
@@ -213,7 +213,7 @@ namespace DEMBuilder.Services.Dem
             return bitmap;
         }
 
-        private (double[,] rasterData, TriangleNet.Geometry.Rectangle bounds) RasterizeTin(IMesh mesh, double[] altitudeData, double resolution)
+        public (double[,] rasterData, TriangleNet.Geometry.Rectangle bounds) RasterizeTin(IMesh mesh, double[] altitudeData, double resolution)
         {
             var bounds = mesh.Bounds;
             int gridWidth = (int)Math.Ceiling(bounds.Width / resolution);

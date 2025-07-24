@@ -1,6 +1,7 @@
 using DEMBuilder.Models;
 using DEMBuilder.Services.Export;
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -13,8 +14,7 @@ namespace DEMBuilder.Pages
         public event EventHandler<GeoTiffExportCompletedEventArgs>? ExportCompleted;
         public event EventHandler? BackRequested;
 
-        private double[,]? _rasterData;
-        private TriangleNet.Geometry.Rectangle? _bounds;
+        private List<GpsPoint>? _gpsPoints;
         private double _referenceLatitude;
         private double _referenceLongitude;
         private string _farmName = string.Empty;
@@ -37,11 +37,10 @@ namespace DEMBuilder.Pages
             ResolutionTextBox.TextChanged += (s, e) => UpdatePreview();
         }
 
-        public void SetExportData(double[,] rasterData, TriangleNet.Geometry.Rectangle bounds, 
+        public void SetExportData(List<GpsPoint> gpsPoints, 
             double referenceLatitude, double referenceLongitude, string farmName, string fieldName)
         {
-            _rasterData = rasterData;
-            _bounds = bounds;
+            _gpsPoints = gpsPoints;
             _referenceLatitude = referenceLatitude;
             _referenceLongitude = referenceLongitude;
             _farmName = farmName;
@@ -54,9 +53,9 @@ namespace DEMBuilder.Pages
         {
             try
             {
-                if (_rasterData == null || _bounds == null)
+                if (_gpsPoints == null || _gpsPoints.Count == 0)
                 {
-                    PreviewTextBlock.Text = "No data loaded for preview";
+                    PreviewTextBlock.Text = "No GPS data loaded for preview";
                     FilenamePreviewTextBlock.Text = "";
                     return;
                 }
@@ -67,9 +66,15 @@ namespace DEMBuilder.Pages
                 var exportType = GetSelectedExportType();
                 var useCompression = CompressionCheckBox.IsChecked == true;
 
-                // Calculate estimated file size
-                var width = _rasterData.GetLength(1);
-                var height = _rasterData.GetLength(0);
+                // Estimate file size based on GPS points and resolution
+                // Calculate approximate bounds from GPS points
+                var minEasting = _gpsPoints.Min(p => p.Easting);
+                var maxEasting = _gpsPoints.Max(p => p.Easting);
+                var minNorthing = _gpsPoints.Min(p => p.Northing);
+                var maxNorthing = _gpsPoints.Max(p => p.Northing);
+                
+                var width = (int)Math.Ceiling((maxEasting - minEasting) / resolution);
+                var height = (int)Math.Ceiling((maxNorthing - minNorthing) / resolution);
                 var pixelCount = width * height;
                 var bytesPerPixel = 4; // Float32
                 var estimatedSize = (long)pixelCount * bytesPerPixel;
@@ -164,9 +169,9 @@ namespace DEMBuilder.Pages
 
         private async void ExportButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_rasterData == null || _bounds == null)
+            if (_gpsPoints == null || _gpsPoints.Count == 0)
             {
-                System.Windows.MessageBox.Show("No DEM data available for export.", "Export Error", 
+                System.Windows.MessageBox.Show("No GPS data available for export.", "Export Error", 
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -216,9 +221,9 @@ namespace DEMBuilder.Pages
                 var progress = new Progress<GeoTiffExportProgress>(UpdateExportProgress);
 
                 var result = await exportService.ExportGeoTiffAsync(
-                    _rasterData, _bounds, saveDialog.FileName, options,
+                    _gpsPoints!, saveDialog.FileName, options,
                     _referenceLatitude, _referenceLongitude, _farmName, _fieldName,
-                    progress, _exportCancellation.Token);
+                    GetResolution(), progress, _exportCancellation.Token);
 
                 HideProgress();
                 SetUIEnabled(true);

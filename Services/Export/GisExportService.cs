@@ -1,13 +1,17 @@
 using DEMBuilder.Models;
+using DEMBuilder.Services;
+using DEMBuilder.Services.Dem;
 using OSGeo.GDAL;
 using OSGeo.OSR;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using TriangleNet.Geometry;
 
 namespace DEMBuilder.Services.Export
 {
@@ -83,14 +87,14 @@ namespace DEMBuilder.Services.Export
     public class GisExportService
     {
         public async Task<GeoTiffExportResult> ExportGeoTiffAsync(
-            double[,] rasterData,
-            TriangleNet.Geometry.Rectangle bounds,
+            List<GpsPoint> gpsPoints,
             string outputPath,
             GeoTiffExportOptions options,
             double referenceLatitude,
             double referenceLongitude,
             string farmName,
             string fieldName,
+            double resolution = 0.25,
             IProgress<GeoTiffExportProgress>? progress = null,
             CancellationToken cancellationToken = default)
         {
@@ -102,29 +106,40 @@ namespace DEMBuilder.Services.Export
             GdalDebugLogger.Log($"Output Path: {outputPath}");
             GdalDebugLogger.Log($"Coordinate System: {options.CoordinateSystem}");
             GdalDebugLogger.Log($"Export Type: {options.ExportType}");
-            GdalDebugLogger.Log($"Bounds: Left={bounds.Left}, Right={bounds.Right}, Top={bounds.Top}, Bottom={bounds.Bottom}");
+            GdalDebugLogger.Log($"GPS Points Count: {gpsPoints.Count}");
+            GdalDebugLogger.Log($"Resolution: {resolution}");
             GdalDebugLogger.Log($"Reference: Lat={referenceLatitude}, Lon={referenceLongitude}");
             
             try
             {
-                GdalDebugLogger.Log("Step 1: Configuring GDAL service and initialization");
-                // Configure native GDAL DLLs and initialize GDAL
-                var gdalService = new GdalExportService();
-                InitializeGdal();
+                GdalDebugLogger.Log("Step 1: Initializing GDAL using unified manager");
+                // Use unified GDAL manager for proper initialization
+                GdalManager.EnsureInitialized();
                 GdalDebugLogger.LogGdalInfo();
+
+                // Step 2: Create TIN mesh and rasterize data (same as ASCII export)
+                GdalDebugLogger.Log("Step 2: Creating TIN mesh from GPS points");
+                var demService = new DemGenerationService();
+                var (tinMesh, altitudeData) = demService.CreateTin(gpsPoints);
+                GdalDebugLogger.Log($"TIN mesh created with {tinMesh.Triangles.Count} triangles");
+                
+                GdalDebugLogger.Log("Step 3: Rasterizing TIN mesh");
+                var (rasterData, bounds) = demService.RasterizeTin(tinMesh, altitudeData, resolution);
+                GdalDebugLogger.Log($"Rasterization complete: {rasterData.GetLength(0)} x {rasterData.GetLength(1)} pixels");
+                GdalDebugLogger.Log($"Bounds: Left={bounds.Left}, Right={bounds.Right}, Top={bounds.Top}, Bottom={bounds.Bottom}");
 
                 progress?.Report(new GeoTiffExportProgress 
                 { 
-                    Message = "Initializing GeoTIFF export", 
-                    PercentComplete = 0 
+                    Message = "TIN mesh created, rasterizing data", 
+                    PercentComplete = 20 
                 });
 
-                GdalDebugLogger.Log("Step 2: Validating inputs");
-                // Validate inputs
+                GdalDebugLogger.Log("Step 4: Validating rasterized data");
+                // Validate rasterized data
                 if (rasterData == null)
                 {
-                    GdalDebugLogger.Log("ERROR: Raster data is null");
-                    throw new ArgumentException("Raster data cannot be null");
+                    GdalDebugLogger.Log("ERROR: Rasterized data is null");
+                    throw new ArgumentException("Rasterized data cannot be null");
                 }
 
                 var height = rasterData.GetLength(0);
@@ -141,14 +156,14 @@ namespace DEMBuilder.Services.Export
                 progress?.Report(new GeoTiffExportProgress 
                 { 
                     Message = "Setting up coordinate system", 
-                    PercentComplete = 10 
+                    PercentComplete = 30 
                 });
 
-                GdalDebugLogger.Log("Step 3: Creating spatial reference system");
+                GdalDebugLogger.Log("Step 5: Creating spatial reference system");
                 var spatialRef = CreateSpatialReference(options.CoordinateSystem, referenceLatitude, referenceLongitude);
                 GdalDebugLogger.Log("Spatial reference created successfully");
                 
-                GdalDebugLogger.Log("Step 4: Calculating geotransform");
+                GdalDebugLogger.Log("Step 6: Calculating geotransform");
                 // Calculate geotransform based on coordinate system
                 var geotransform = CalculateGeoTransform(bounds, width, height, options.CoordinateSystem, 
                     referenceLatitude, referenceLongitude);
@@ -285,6 +300,8 @@ namespace DEMBuilder.Services.Export
                 GdalDebugLogger.Log($"Allocated flat data array of size {flatData.Length}");
 
                 GdalDebugLogger.Log("Step G: Converting raster data to flat array");
+                var validCount = 0;
+                var nanCount = 0;
                 await Task.Run(() =>
                 {
                     try
@@ -294,12 +311,20 @@ namespace DEMBuilder.Services.Export
                             for (int col = 0; col < width; col++)
                             {
                                 var value = rasterData[row, col];
-                                flatData[row * width + col] = (float)value;
                                 
-                                if (!double.IsNaN(value))
+                                // Handle NoData values: convert NaN to -9999 for GDAL, but exclude from statistics
+                                if (double.IsNaN(value))
                                 {
+                                    flatData[row * width + col] = -9999f; // NoData value for GDAL
+                                    nanCount++;
+                                }
+                                else
+                                {
+                                    flatData[row * width + col] = (float)value;
+                                    // Only include valid values in statistics (exclude NoData)
                                     minElevation = Math.Min(minElevation, value);
                                     maxElevation = Math.Max(maxElevation, value);
+                                    validCount++;
                                 }
                             }
 
@@ -316,7 +341,19 @@ namespace DEMBuilder.Services.Export
 
                             cancellationToken.ThrowIfCancellationRequested();
                         }
-                        GdalDebugLogger.Log($"Data conversion complete. Min: {minElevation}, Max: {maxElevation}");
+                        
+                        // Handle case where no valid values were found
+                        if (validCount == 0)
+                        {
+                            GdalDebugLogger.Log($"WARNING: No valid elevation values found! Valid: {validCount}, NaN: {nanCount}");
+                            minElevation = 0;
+                            maxElevation = 0;
+                        }
+                        else
+                        {
+                            GdalDebugLogger.Log($"Data conversion complete. Valid values: {validCount}, NaN values: {nanCount}");
+                            GdalDebugLogger.Log($"Elevation range: Min: {minElevation}, Max: {maxElevation}");
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -420,35 +457,7 @@ namespace DEMBuilder.Services.Export
                 geotransform, farmName, fieldName, progress, cancellationToken);
         }
 
-        private void InitializeGdal()
-        {
-            try
-            {
-                // Always configure PROJ paths first, regardless of GDAL initialization state
-                GdalDebugLogger.Log("Configuring PROJ paths before GDAL operations");
-                ConfigureProjPaths();
-                
-                if (Gdal.GetDriverCount() == 0)
-                {
-                    GdalDebugLogger.Log("GDAL not initialized, registering drivers");
-                    // Configure GDAL data path
-                    ConfigureGdalDataPaths();
-                    
-                    Gdal.AllRegister();
-                }
-                else
-                {
-                    GdalDebugLogger.Log($"GDAL already initialized with {Gdal.GetDriverCount()} drivers");
-                    // Still configure GDAL data paths in case they weren't set
-                    ConfigureGdalDataPaths();
-                }
-            }
-            catch (Exception ex)
-            {
-                GdalDebugLogger.LogError("InitializeGdal", ex);
-                throw new InvalidOperationException($"Failed to initialize GDAL: {ex.Message}", ex);
-            }
-        }
+
 
         private SpatialReference CreateSpatialReference(CoordinateSystemType coordSystem, 
             double refLat, double refLon)
@@ -625,6 +634,15 @@ namespace DEMBuilder.Services.Export
 
         private void AddElevationColorPalette(Band band, double minElevation, double maxElevation)
         {
+            // Check if the band data type supports color tables
+            // Color tables are only supported for Byte and UInt16 bands in GeoTIFF format
+            var dataType = band.DataType;
+            if (dataType != DataType.GDT_Byte && dataType != DataType.GDT_UInt16)
+            {
+                GdalDebugLogger.Log($"Skipping color palette: Band data type {dataType} does not support color tables in GeoTIFF format");
+                return;
+            }
+            
             // Create a simple elevation color palette
             var colorTable = new ColorTable(PaletteInterp.GPI_RGB);
             
@@ -637,19 +655,20 @@ namespace DEMBuilder.Services.Export
                 var ratio = i / 255.0;
                 var colorEntry = new ColorEntry();
                 
+                // Blue to green to red color ramp
                 if (ratio < 0.5)
                 {
                     // Blue to green
-                    colorEntry.c1 = (short)(255 * (1 - 2 * ratio)); // Red
-                    colorEntry.c2 = (short)(255 * 2 * ratio);       // Green
-                    colorEntry.c3 = 255;                            // Blue
+                    colorEntry.c1 = (short)(ratio * 2 * 255); // Red
+                    colorEntry.c2 = (short)(255); // Green
+                    colorEntry.c3 = (short)((1 - ratio * 2) * 255); // Blue
                 }
                 else
                 {
                     // Green to red
-                    colorEntry.c1 = (short)(255 * (2 * ratio - 1)); // Red
-                    colorEntry.c2 = (short)(255 * (2 - 2 * ratio)); // Green
-                    colorEntry.c3 = 0;                              // Blue
+                    colorEntry.c1 = (short)(255); // Red
+                    colorEntry.c2 = (short)((2 - ratio * 2) * 255); // Green
+                    colorEntry.c3 = (short)(0); // Blue
                 }
                 colorEntry.c4 = 255; // Alpha
                 
@@ -660,81 +679,16 @@ namespace DEMBuilder.Services.Export
             band.SetRasterColorInterpretation(ColorInterp.GCI_PaletteIndex);
         }
 
-        private void ConfigureProjPaths()
+
+
+        private string CreateWGS84WktString()
         {
-            GdalDebugLogger.Log("=== CONFIGURING PROJ PATHS ===");
-            GdalDebugLogger.Log($"Base Directory: {AppDomain.CurrentDomain.BaseDirectory}");
-            
-            // Try multiple possible PROJ library locations
-            var possibleProjPaths = new[]
-            {
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "gdal", "projlib"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "gdal", "share"),  // Fixed: proj.db is directly in share folder
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "gdal", "share", "proj"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "runtimes", "win-x64", "native", "projlib"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "proj"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "GDAL", "projlib"),
-                @"C:\OSGeo4W64\share\proj",
-                @"C:\Program Files\GDAL\projlib"
-            };
-
-            foreach (var path in possibleProjPaths)
-            {
-                GdalDebugLogger.Log($"Checking PROJ path: {path}");
-                if (Directory.Exists(path))
-                {
-                    GdalDebugLogger.Log($"Directory exists: {path}");
-                    var projDbPath = Path.Combine(path, "proj.db");
-                    GdalDebugLogger.Log($"Looking for proj.db at: {projDbPath}");
-                    if (File.Exists(projDbPath))
-                    {
-                        GdalDebugLogger.Log($"SUCCESS: proj.db found at: {projDbPath}");
-                        Gdal.SetConfigOption("PROJ_LIB", path);
-                        GdalDebugLogger.Log($"PROJ_LIB set to: {path}");
-                        
-                        // Verify the setting took effect
-                        var verifyPath = Gdal.GetConfigOption("PROJ_LIB", "NOT SET");
-                        GdalDebugLogger.Log($"PROJ_LIB verification: {verifyPath}");
-                        return;
-                    }
-                    else
-                    {
-                        GdalDebugLogger.Log($"proj.db NOT found at: {projDbPath}");
-                    }
-                }
-                else
-                {
-                    GdalDebugLogger.Log($"Directory does NOT exist: {path}");
-                }
-            }
-
-            // If no proj.db found, disable PROJ database usage
-            GdalDebugLogger.Log("WARNING: proj.db not found in any location, disabling PROJ database usage");
-            Gdal.SetConfigOption("PROJ_NETWORK", "OFF");
-            Gdal.SetConfigOption("PROJ_LIB", "");
-        }
-
-        private void ConfigureGdalDataPaths()
-        {
-            // Try multiple possible GDAL data locations
-            var possibleGdalPaths = new[]
-            {
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "gdal", "data"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "runtimes", "win-x64", "native", "gdal-data"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "gdal-data"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "GDAL", "data"),
-                @"C:\OSGeo4W64\share\gdal",
-                @"C:\Program Files\GDAL\data"
-            };
-
-            foreach (var path in possibleGdalPaths)
-            {
-                if (Directory.Exists(path))
-                {
-                    Gdal.SetConfigOption("GDAL_DATA", path);
-                    return;
-                }
-            }
+            // Create WGS84 geographic WKT string without relying on PROJ database
+            return @"GEOGCS[""WGS 84"",
+                DATUM[""WGS_1984"",
+                    SPHEROID[""WGS 84"",6378137,298.257223563]],
+                PRIMEM[""Greenwich"",0],
+                UNIT[""degree"",0.0174532925199433]]";
         }
 
         private string CreateUTMWktString(int zone, bool isNorthern)
@@ -754,16 +708,6 @@ namespace DEMBuilder.Services.Export
                 PARAMETER[""false_easting"",500000],
                 PARAMETER[""false_northing"",{(isNorthern ? 0 : 10000000)}],
                 UNIT[""metre"",1]]";
-        }
-
-        private string CreateWGS84WktString()
-        {
-            // Create WGS84 geographic WKT string without relying on PROJ database
-            return @"GEOGCS[""WGS 84"",
-                DATUM[""WGS_1984"",
-                    SPHEROID[""WGS 84"",6378137,298.257223563]],
-                PRIMEM[""Greenwich"",0],
-                UNIT[""degree"",0.0174532925199433]]";
         }
 
         private TriangleNet.Geometry.Rectangle ConvertToUTMApproximate(TriangleNet.Geometry.Rectangle bounds, 

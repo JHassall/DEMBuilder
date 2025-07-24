@@ -281,7 +281,7 @@ namespace DEMBuilder
                         WizardFrame.Content = _textFileOptionsPage;
                         break;
                     case ExportFormat.GeoTiff:
-                        _geoTiffOptionsPage.SetExportData(_rasterData, _bounds, _referenceLatitude, _referenceLongitude, _farmName, _fieldName);
+                        _geoTiffOptionsPage.SetExportData(_currentFilteredGpsPoints ?? _projectedGpsPoints ?? _allGpsPoints ?? new List<GpsPoint>(), _referenceLatitude, _referenceLongitude, _farmName, _fieldName);
                         WizardFrame.Content = _geoTiffOptionsPage;
                         break;
                     case ExportFormat.RgFdem:
