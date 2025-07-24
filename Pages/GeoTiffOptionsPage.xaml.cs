@@ -32,8 +32,7 @@ namespace DEMBuilder.Pages
             LocalRadioButton.Checked += (s, e) => UpdatePreview();
             SingleFileRadioButton.Checked += (s, e) => UpdatePreview();
             TiledRadioButton.Checked += (s, e) => UpdatePreview();
-            CompressionCheckBox.Checked += (s, e) => UpdatePreview();
-            CompressionCheckBox.Unchecked += (s, e) => UpdatePreview();
+            // Compression removed for data integrity
             ResolutionTextBox.TextChanged += (s, e) => UpdatePreview();
         }
 
@@ -64,7 +63,7 @@ namespace DEMBuilder.Pages
                 var resolution = GetResolution();
                 var coordinateSystem = GetSelectedCoordinateSystem();
                 var exportType = GetSelectedExportType();
-                var useCompression = CompressionCheckBox.IsChecked == true;
+                var useCompression = false; // Always disabled for data integrity
 
                 // Estimate file size based on GPS points and resolution
                 // Calculate approximate bounds from GPS points
@@ -137,7 +136,7 @@ namespace DEMBuilder.Pages
                                  CoordinateSystemType.LocalTangentPlane,
                 ExportType = SingleFileRadioButton.IsChecked == true ? GeoTiffExportType.SingleFile :
                            GeoTiffExportType.Tiled,
-                UseCompression = CompressionCheckBox.IsChecked == true,
+                UseCompression = false, // Always disabled for data integrity
                 IncludeColorPalette = ColorPaletteCheckBox.IsChecked == true,
                 Resolution = GetResolution(),
                 IncludeFarmName = FarmNameCheckBox.IsChecked == true,
@@ -291,7 +290,7 @@ namespace DEMBuilder.Pages
             LocalRadioButton.IsEnabled = enabled;
             SingleFileRadioButton.IsEnabled = enabled;
             TiledRadioButton.IsEnabled = enabled;
-            CompressionCheckBox.IsEnabled = enabled;
+            // Compression option removed for data integrity
             ColorPaletteCheckBox.IsEnabled = enabled;
             ResolutionTextBox.IsEnabled = enabled;
             FarmNameCheckBox.IsEnabled = enabled;

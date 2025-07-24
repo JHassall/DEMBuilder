@@ -17,7 +17,7 @@ namespace DEMBuilder.Models
     {
         public CoordinateSystemType CoordinateSystem { get; set; } = CoordinateSystemType.UTM;
         public GeoTiffExportType ExportType { get; set; } = GeoTiffExportType.SingleFile;
-        public bool UseCompression { get; set; } = true;
+        public bool UseCompression { get; set; } = false; // Default to no compression for data integrity
         public bool IncludeColorPalette { get; set; } = true;
         public double Resolution { get; set; } = 0.25;
         

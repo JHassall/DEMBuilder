@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using TriangleNet.Geometry;
+using DEMBuilder.Models;
 
 namespace DEMBuilder.Services.Export
 {
@@ -26,6 +27,8 @@ namespace DEMBuilder.Services.Export
         public TriangleNet.Geometry.Rectangle Bounds { get; set; } = new TriangleNet.Geometry.Rectangle();
         public int TotalPoints { get; set; }
         public string ProjectionInfo { get; set; } = "AgOpenGPS Compatible Local Coordinate System";
+        public bool IsCompressed { get; set; } = false;
+        public string CompressionType { get; set; } = "None";
         public Dictionary<string, object> CustomProperties { get; set; } = new Dictionary<string, object>();
     }
 
@@ -52,6 +55,28 @@ namespace DEMBuilder.Services.Export
     /// </summary>
     public class RgFdemExportService
     {
+        /// <summary>
+        /// Export RgF DEM with options (includes compression setting)
+        /// </summary>
+        public async Task<RgFdemExportResult> ExportRgFdemAsync(
+            double[,] rasterData,
+            TriangleNet.Geometry.Rectangle bounds,
+            string outputPath,
+            RgFdemExportOptions options,
+            double referenceLatitude,
+            double referenceLongitude,
+            string farmName = "",
+            string fieldName = "",
+            IProgress<RgFdemProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            return await ExportRgFdemAsync(rasterData, bounds, outputPath, options.Resolution,
+                referenceLatitude, referenceLongitude, farmName, fieldName, progress, cancellationToken, options.UseCompression);
+        }
+
+        /// <summary>
+        /// Export RgF DEM with individual parameters (legacy method)
+        /// </summary>
         public async Task<RgFdemExportResult> ExportRgFdemAsync(
             double[,] rasterData,
             TriangleNet.Geometry.Rectangle bounds,
@@ -62,7 +87,8 @@ namespace DEMBuilder.Services.Export
             string farmName = "",
             string fieldName = "",
             IProgress<RgFdemProgress>? progress = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            bool useCompression = false)
         {
             var result = new RgFdemExportResult();
             var startTime = DateTime.UtcNow;
@@ -97,21 +123,24 @@ namespace DEMBuilder.Services.Export
                 });
 
                 // Create metadata
-                var metadata = CreateMetadata(rasterData, bounds, resolution, referenceLatitude, referenceLongitude, farmName, fieldName);
+                var metadata = CreateMetadata(rasterData, bounds, resolution, referenceLatitude, referenceLongitude, farmName, fieldName, useCompression);
 
+                var compressionPhase = useCompression ? "Compression" : "Packaging";
+                var compressionMessage = useCompression ? "Compressing DEM data..." : "Packaging DEM data...";
                 progress?.Report(new RgFdemProgress
                 {
-                    Phase = "Compression",
+                    Phase = compressionPhase,
                     PercentComplete = 20,
-                    Message = "Compressing DEM data..."
+                    Message = compressionMessage
                 });
 
-                // Create RgF DEM file (ZIP-based container)
+                // Create RgF DEM file (ZIP-based container with optional compression)
+                var compressionLevel = useCompression ? CompressionLevel.Optimal : CompressionLevel.NoCompression;
                 using (var fileStream = new FileStream(outputPath, FileMode.Create))
                 using (var archive = new ZipArchive(fileStream, ZipArchiveMode.Create))
                 {
                     // Add metadata file
-                    var metadataEntry = archive.CreateEntry("metadata.json");
+                    var metadataEntry = archive.CreateEntry("metadata.json", compressionLevel);
                     using (var metadataStream = metadataEntry.Open())
                     {
                         var metadataJson = JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true });
@@ -129,7 +158,7 @@ namespace DEMBuilder.Services.Export
                     });
 
                     // Add DEM data as binary file (more compact than text)
-                    var demEntry = archive.CreateEntry("elevation.dem");
+                    var demEntry = archive.CreateEntry("elevation.dem", compressionLevel);
                     using (var demStream = demEntry.Open())
                     using (var writer = new BinaryWriter(demStream))
                     {
@@ -173,7 +202,7 @@ namespace DEMBuilder.Services.Export
                     });
 
                     // Add coordinate system information for ABLS compatibility
-                    var coordEntry = archive.CreateEntry("coordinate_system.txt");
+                    var coordEntry = archive.CreateEntry("coordinate_system.txt", compressionLevel);
                     using (var coordStream = coordEntry.Open())
                     using (var writer = new StreamWriter(coordStream))
                     {
@@ -197,7 +226,7 @@ namespace DEMBuilder.Services.Export
                     });
 
                     // Add README for users
-                    var readmeEntry = archive.CreateEntry("README.txt");
+                    var readmeEntry = archive.CreateEntry("README.txt", compressionLevel);
                     using (var readmeStream = readmeEntry.Open())
                     using (var writer = new StreamWriter(readmeStream))
                     {
@@ -261,7 +290,8 @@ namespace DEMBuilder.Services.Export
             double referenceLatitude,
             double referenceLongitude,
             string farmName,
-            string fieldName)
+            string fieldName,
+            bool useCompression = false)
         {
             var metadata = new RgFdemMetadata
             {
@@ -273,7 +303,9 @@ namespace DEMBuilder.Services.Export
                 PixelsX = rasterData.GetLength(1),
                 PixelsY = rasterData.GetLength(0),
                 Bounds = bounds,
-                TotalPoints = rasterData.GetLength(0) * rasterData.GetLength(1)
+                TotalPoints = rasterData.GetLength(0) * rasterData.GetLength(1),
+                IsCompressed = useCompression,
+                CompressionType = useCompression ? "ZIP" : "None"
             };
 
             // Calculate elevation range

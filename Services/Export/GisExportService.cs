@@ -245,9 +245,11 @@ namespace DEMBuilder.Services.Export
 
                 GdalDebugLogger.Log("Step B: Setting creation options");
                 // Set creation options
+                // For precision agriculture data, no compression is safest to preserve exact elevation values
+                // Compression can introduce quantization artifacts that affect field operations
                 var creationOptions = new string[]
                 {
-                    options.UseCompression ? "COMPRESS=LZW" : "COMPRESS=NONE",
+                    options.UseCompression ? "COMPRESS=DEFLATE" : "COMPRESS=NONE",
                     "TILED=YES",
                     "BLOCKXSIZE=256",
                     "BLOCKYSIZE=256"
@@ -312,8 +314,8 @@ namespace DEMBuilder.Services.Export
                             {
                                 var value = rasterData[row, col];
                                 
-                                // Handle NoData values: convert NaN to -9999 for GDAL, but exclude from statistics
-                                if (double.IsNaN(value))
+                                // Handle NoData values: exclude both NaN and -9999 from statistics
+                                if (double.IsNaN(value) || Math.Abs(value - (-9999.0)) < 0.001)
                                 {
                                     flatData[row * width + col] = -9999f; // NoData value for GDAL
                                     nanCount++;
@@ -321,7 +323,7 @@ namespace DEMBuilder.Services.Export
                                 else
                                 {
                                     flatData[row * width + col] = (float)value;
-                                    // Only include valid values in statistics (exclude NoData)
+                                    // Only include valid elevation values in statistics (exclude NoData)
                                     minElevation = Math.Min(minElevation, value);
                                     maxElevation = Math.Max(maxElevation, value);
                                     validCount++;
@@ -363,9 +365,42 @@ namespace DEMBuilder.Services.Export
                 }, cancellationToken);
 
                 GdalDebugLogger.Log("Step H: Writing data to GDAL raster band");
+                
+                // Debug: Validate flatData before writing to GDAL
+                int preWriteValidCount = 0;
+                float preWriteMin = float.MaxValue;
+                float preWriteMax = float.MinValue;
+                for (int i = 0; i < flatData.Length; i++)
+                {
+                    if (Math.Abs(flatData[i] - (-9999f)) > 0.001f)
+                    {
+                        preWriteValidCount++;
+                        preWriteMin = Math.Min(preWriteMin, flatData[i]);
+                        preWriteMax = Math.Max(preWriteMax, flatData[i]);
+                    }
+                }
+                GdalDebugLogger.Log($"Pre-WriteRaster validation: Valid={preWriteValidCount}, Min={preWriteMin}, Max={preWriteMax}");
+                
                 // Write data to band
                 band.WriteRaster(0, 0, width, height, flatData, width, height, 0, 0);
                 GdalDebugLogger.Log("Data written to raster band successfully");
+                
+                // Debug: Read back data from GDAL to verify what was actually written
+                float[] readBackData = new float[width * height];
+                band.ReadRaster(0, 0, width, height, readBackData, width, height, 0, 0);
+                int postWriteValidCount = 0;
+                float postWriteMin = float.MaxValue;
+                float postWriteMax = float.MinValue;
+                for (int i = 0; i < readBackData.Length; i++)
+                {
+                    if (Math.Abs(readBackData[i] - (-9999f)) > 0.001f)
+                    {
+                        postWriteValidCount++;
+                        postWriteMin = Math.Min(postWriteMin, readBackData[i]);
+                        postWriteMax = Math.Max(postWriteMax, readBackData[i]);
+                    }
+                }
+                GdalDebugLogger.Log($"Post-WriteRaster validation: Valid={postWriteValidCount}, Min={postWriteMin}, Max={postWriteMax}");
 
                 progress?.Report(new GeoTiffExportProgress 
                 { 
@@ -521,34 +556,15 @@ namespace DEMBuilder.Services.Export
         {
             double originX, originY, pixelWidth, pixelHeight;
 
-            switch (coordSystem)
-            {
-                case CoordinateSystemType.UTM:
-                    // Convert bounds to UTM coordinates
-                    var utmBounds = ConvertToUTM(bounds, refLat, refLon);
-                    originX = utmBounds.Left;
-                    originY = utmBounds.Top;
-                    pixelWidth = (utmBounds.Right - utmBounds.Left) / width;
-                    pixelHeight = -(utmBounds.Top - utmBounds.Bottom) / height; // Negative for north-up
-                    break;
-
-                case CoordinateSystemType.WGS84:
-                    // Use geographic coordinates directly
-                    originX = bounds.Left;
-                    originY = bounds.Top;
-                    pixelWidth = (bounds.Right - bounds.Left) / width;
-                    pixelHeight = -(bounds.Top - bounds.Bottom) / height; // Negative for north-up
-                    break;
-
-                case CoordinateSystemType.LocalTangentPlane:
-                default:
-                    // Use local coordinates as-is
-                    originX = bounds.Left;
-                    originY = bounds.Top;
-                    pixelWidth = (bounds.Right - bounds.Left) / width;
-                    pixelHeight = -(bounds.Top - bounds.Bottom) / height; // Negative for north-up
-                    break;
-            }
+            // SIMPLIFIED: Use local coordinates directly to avoid coordinate transformation issues
+            // This ensures QGIS can display the full dataset with correct statistics
+            originX = bounds.Left;
+            originY = bounds.Top;
+            pixelWidth = (bounds.Right - bounds.Left) / width;
+            pixelHeight = -(bounds.Top - bounds.Bottom) / height; // Negative for north-up
+            
+            GdalDebugLogger.Log($"SIMPLIFIED coordinate system: Local bounds used directly");
+            GdalDebugLogger.Log($"Origin: ({originX:F3}, {originY:F3}), PixelSize: ({pixelWidth:F6}, {pixelHeight:F6})");
 
             return new double[] { originX, pixelWidth, 0, originY, 0, pixelHeight };
         }
@@ -574,28 +590,22 @@ namespace DEMBuilder.Services.Export
                 // Create coordinate transformation
                 var transform = new CoordinateTransformation(sourceSrs, targetSrs);
                 
-                // Transform corner points
-                var corners = new[]
-                {
-                    new[] { bounds.Left, bounds.Bottom, 0.0 },
-                    new[] { bounds.Right, bounds.Bottom, 0.0 },
-                    new[] { bounds.Right, bounds.Top, 0.0 },
-                    new[] { bounds.Left, bounds.Top, 0.0 }
-                };
+                // FIXED: Transform reference point to get UTM origin, then apply local bounds as offsets
+                var refPoint = new[] { refLon, refLat, 0.0 };
+                transform.TransformPoint(refPoint);
+                var utmRefX = refPoint[0];
+                var utmRefY = refPoint[1];
                 
-                double minX = double.MaxValue, minY = double.MaxValue;
-                double maxX = double.MinValue, maxY = double.MinValue;
+                // Apply local bounds as meter offsets from the UTM reference point
+                var utmMinX = utmRefX + bounds.Left;
+                var utmMaxX = utmRefX + bounds.Right;
+                var utmMinY = utmRefY + bounds.Bottom;
+                var utmMaxY = utmRefY + bounds.Top;
                 
-                foreach (var corner in corners)
-                {
-                    transform.TransformPoint(corner);
-                    minX = Math.Min(minX, corner[0]);
-                    maxX = Math.Max(maxX, corner[0]);
-                    minY = Math.Min(minY, corner[1]);
-                    maxY = Math.Max(maxY, corner[1]);
-                }
+                GdalDebugLogger.Log($"UTM transformation: RefUTM=({utmRefX:F2}, {utmRefY:F2}), LocalBounds=({bounds.Left:F2}, {bounds.Bottom:F2}, {bounds.Right:F2}, {bounds.Top:F2})");
+                GdalDebugLogger.Log($"Final UTM bounds: ({utmMinX:F2}, {utmMinY:F2}, {utmMaxX:F2}, {utmMaxY:F2})");
                 
-                return new TriangleNet.Geometry.Rectangle(minX, minY, maxX, maxY);
+                return new TriangleNet.Geometry.Rectangle(utmMinX, utmMinY, utmMaxX, utmMaxY);
             }
             catch (Exception)
             {

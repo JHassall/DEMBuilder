@@ -88,11 +88,15 @@
                                FontWeight="SemiBold" 
                                Margin="0,0,0,10"/>
                     
-                    <CheckBox x:Name="CompressionCheckBox" 
-                              Content="LZW Compression" 
-                              IsChecked="True" 
-                              Margin="0,5"/>
-                    <TextBlock Text="• Reduces file size by 30-50% with no quality loss" 
+                    <TextBlock Text="Data Integrity Mode: No Compression" 
+                               FontWeight="SemiBold" 
+                               Foreground="DarkGreen" 
+                               Margin="0,5"/>
+                    <TextBlock Text="• Ensures 100% preservation of elevation data precision" 
+                               FontSize="12" 
+                               Foreground="Gray" 
+                               Margin="20,0,0,5"/>
+                    <TextBlock Text="• Critical for precision agriculture and RTK GPS data" 
                                FontSize="12" 
                                Foreground="Gray" 
                                Margin="20,0,0,10"/>

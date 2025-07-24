@@ -38,6 +38,8 @@ namespace DEMBuilder.Pages
             
             // Wire up events for real-time preview updates
             ResolutionTextBox.TextChanged += (s, e) => UpdatePreview();
+            CompressionCheckBox.Checked += (s, e) => UpdatePreview();
+            CompressionCheckBox.Unchecked += (s, e) => UpdatePreview();
         }
 
         public void SetExportData(double[,] rasterData, TriangleNet.Geometry.Rectangle bounds, 
@@ -75,7 +77,11 @@ namespace DEMBuilder.Pages
                 // Estimate RgF DEM file size (ZIP container with binary data + metadata)
                 var binaryDataSize = pixelCount * 4; // Float32 elevation data
                 var metadataSize = 2048; // JSON metadata + coordinate system + README
-                var estimatedSize = (long)((binaryDataSize + metadataSize) * 0.7); // ZIP compression ~30%
+                // Calculate estimated size based on compression setting
+                var useCompression = CompressionCheckBox.IsChecked == true;
+                var estimatedSize = useCompression 
+                    ? (long)((binaryDataSize + metadataSize) * 0.3) // ZIP compression ~70% reduction
+                    : (long)(binaryDataSize + metadataSize); // No compression
 
                 var fileSizeText = FormatFileSize(estimatedSize);
 
@@ -101,6 +107,20 @@ namespace DEMBuilder.Pages
             if (double.TryParse(ResolutionTextBox.Text, out double resolution) && resolution > 0)
                 return resolution;
             return 0.25; // Default
+        }
+
+        private RgFdemExportOptions GetExportOptions()
+        {
+            return new RgFdemExportOptions
+            {
+                Resolution = GetResolution(),
+                UseCompression = CompressionCheckBox.IsChecked == true,
+                IncludeFarmName = true,
+                IncludeFieldName = true,
+                IncludeProcessingDate = true,
+                IncludeGpsCount = true,
+                IncludeElevationRange = true
+            };
         }
 
         private string FormatFileSize(long bytes)
@@ -172,8 +192,9 @@ namespace DEMBuilder.Pages
                 var exportService = new RgFdemExportService();
                 var progress = new Progress<RgFdemProgress>(UpdateExportProgress);
 
+                var exportOptions = GetExportOptions();
                 var result = await exportService.ExportRgFdemAsync(
-                    _rasterData, _bounds, saveDialog.FileName, resolution,
+                    _rasterData, _bounds, saveDialog.FileName, exportOptions,
                     _referenceLatitude, _referenceLongitude, _farmName, _fieldName,
                     progress, _exportCancellation.Token);
 

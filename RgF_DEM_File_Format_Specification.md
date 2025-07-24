@@ -58,6 +58,8 @@ Farm_Field_ddmmyy.RgFdem (ZIP Archive)
   },
   "TotalPoints": 960000,
   "ProjectionInfo": "AgOpenGPS Compatible Local Coordinate System",
+  "IsCompressed": false,
+  "CompressionType": "None",
   "CustomProperties": {
     "format_version": "1.0",
     "compatible_software": ["ABLS", "AgOpenGPS"],
@@ -87,6 +89,8 @@ Farm_Field_ddmmyy.RgFdem (ZIP Archive)
   - `Top`: Northern boundary (Y maximum)
 - `TotalPoints`: Total number of elevation points (PixelsX × PixelsY)
 - `ProjectionInfo`: Coordinate system description
+- `IsCompressed`: Boolean indicating if elevation data uses compression (true/false)
+- `CompressionType`: Compression method used ("ZIP" if compressed, "None" if uncompressed)
 - `CustomProperties`: Additional metadata for software compatibility
 
 ### 2. elevation.dem
@@ -181,13 +185,18 @@ Units=Meters
 - 100 hectares @ 0.25m resolution: ~15-25 MB
 - 500 hectares @ 0.25m resolution: ~75-125 MB
 
-**Compression:** ZIP compression typically achieves 40-60% size reduction
+**Compression Options:**
+- **No Compression (Default):** Maximum data integrity, 100% preservation of elevation precision
+- **ZIP Compression (Optional):** 60-80% size reduction using safe DEFLATE algorithm
+- **User Selectable:** DEMBuilder allows users to choose compression level
+- **Self-Describing:** Compression type stored in metadata for automatic ABLS detection
 
 **Transfer Optimization:**
 - Single file for easy USB/wireless transfer
 - Binary elevation data for compact storage
 - Structured metadata for fast parsing
 - No external dependencies required
+- Compression metadata ensures compatibility
 
 ## ABLS Integration Requirements
 
@@ -196,6 +205,53 @@ Units=Meters
 2. Confirm ZIP archive structure
 3. Validate presence of all 4 required files
 4. Parse and validate `metadata.json` structure
+
+### Compression Detection and Handling
+
+**CRITICAL:** ABLS must check compression metadata before processing elevation data.
+
+**Step 1: Read Compression Metadata**
+```csharp
+// Parse metadata.json to determine compression type
+var metadata = JsonSerializer.Deserialize<RgFdemMetadata>(metadataJson);
+bool isCompressed = metadata.IsCompressed;
+string compressionType = metadata.CompressionType; // "ZIP" or "None"
+```
+
+**Step 2: Handle ZIP Archive Appropriately**
+- **Both compressed and uncompressed files use ZIP container format**
+- **Difference is in the compression level applied to ZIP entries**
+- **metadata.json is always readable (never compressed for compatibility)**
+
+**Step 3: Process Elevation Data Based on Compression**
+```csharp
+if (isCompressed && compressionType == "ZIP")
+{
+    // ZIP entries use DEFLATE compression - .NET handles automatically
+    using (var elevationEntry = archive.GetEntry("elevation.dem"))
+    using (var stream = elevationEntry.Open()) // Auto-decompresses
+    {
+        // Process binary data normally
+        ProcessElevationData(stream);
+    }
+}
+else
+{
+    // No compression - standard ZIP entry reading
+    using (var elevationEntry = archive.GetEntry("elevation.dem"))
+    using (var stream = elevationEntry.Open())
+    {
+        // Process binary data normally
+        ProcessElevationData(stream);
+    }
+}
+```
+
+**Key Points:**
+- Same code path for both compressed and uncompressed files
+- .NET ZipArchive automatically handles decompression
+- No special decompression libraries required
+- Compression is transparent to the elevation data processing logic
 
 ### Data Loading Process
 1. **Extract ZIP archive** to temporary directory

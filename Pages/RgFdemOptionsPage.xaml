@@ -45,6 +45,42 @@
                 </StackPanel>
             </Border>
 
+            <!-- Compression Options Section -->
+            <Border BorderBrush="LightGray" BorderThickness="1" Padding="15" Margin="0,0,0,20">
+                <StackPanel>
+                    <TextBlock Text="File Options" 
+                               FontSize="16" 
+                               FontWeight="SemiBold" 
+                               Margin="0,0,0,10"/>
+                    
+                    <TextBlock Text="Data Integrity Mode: No Compression" 
+                               FontWeight="SemiBold" 
+                               Foreground="DarkGreen" 
+                               Margin="0,5"/>
+                    <TextBlock Text="• Ensures 100% preservation of elevation data precision" 
+                               FontSize="12" 
+                               Foreground="Gray" 
+                               Margin="20,0,0,5"/>
+                    <TextBlock Text="• Critical for precision agriculture and RTK GPS data" 
+                               FontSize="12" 
+                               Foreground="Gray" 
+                               Margin="20,0,0,10"/>
+                    
+                    <CheckBox x:Name="CompressionCheckBox" 
+                              Content="Enable ZIP Compression (Optional)" 
+                              IsChecked="False" 
+                              Margin="0,10,0,5"/>
+                    <TextBlock Text="• Reduces file size by ~60-80% using safe ZIP compression" 
+                               FontSize="12" 
+                               Foreground="Gray" 
+                               Margin="20,0,0,5"/>
+                    <TextBlock Text="• Can be disabled if any issues are encountered" 
+                               FontSize="12" 
+                               Foreground="Gray" 
+                               Margin="20,0,0,15"/>
+                </StackPanel>
+            </Border>
+
             <!-- File Features Section -->
             <Border BorderBrush="Green" BorderThickness="2" Padding="15" Background="#F0FFF0" Margin="0,0,0,20">
                 <StackPanel>
