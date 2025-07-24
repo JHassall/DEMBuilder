@@ -1,0 +1,179 @@
+<UserControl x:Class="DEMBuilder.Pages.RgFdemOptionsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="800">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20">
+            <!-- Page Header -->
+            <TextBlock Text="RgF DEM Export Options" 
+                       FontSize="24" 
+                       FontWeight="Bold" 
+                       Margin="0,0,0,10"/>
+            
+            <TextBlock Text="Configure your RgF DEM export settings for ABLS integration" 
+                       FontSize="14" 
+                       Foreground="Gray" 
+                       Margin="0,0,0,30"/>
+
+            <!-- Export Parameters Section -->
+            <Border BorderBrush="LightGray" BorderThickness="1" Padding="15" Margin="0,0,0,20">
+                <StackPanel>
+                    <TextBlock Text="Export Parameters" 
+                               FontSize="16" 
+                               FontWeight="SemiBold" 
+                               Margin="0,0,0,10"/>
+                    
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="Resolution:" 
+                                   VerticalAlignment="Center" 
+                                   Margin="0,0,10,0"/>
+                        <TextBox x:Name="ResolutionTextBox" 
+                                 Text="0.25" 
+                                 Width="80" 
+                                 VerticalAlignment="Center"/>
+                        <TextBlock Text="meters/pixel" 
+                                   VerticalAlignment="Center" 
+                                   Margin="10,0,0,0"/>
+                    </StackPanel>
+                    <TextBlock Text="• Optimized for agricultural operations (0.25m recommended)" 
+                               FontSize="12" 
+                               Foreground="Gray" 
+                               Margin="20,5,0,15"/>
+                </StackPanel>
+            </Border>
+
+            <!-- File Features Section -->
+            <Border BorderBrush="Green" BorderThickness="2" Padding="15" Background="#F0FFF0" Margin="0,0,0,20">
+                <StackPanel>
+                    <TextBlock Text="RgF DEM Features" 
+                               FontSize="16" 
+                               FontWeight="SemiBold" 
+                               Foreground="DarkGreen"
+                               Margin="0,0,0,10"/>
+                    
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="📦" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock Text="Single file output - perfect for thumb drives and wireless transfer" 
+                                   FontWeight="SemiBold" 
+                                   Foreground="DarkGreen" 
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                    
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="🚜" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock Text="Optimized for ABLS tractor software integration" 
+                                   FontWeight="SemiBold" 
+                                   Foreground="DarkGreen" 
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                    
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="🔧" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock Text="Includes: DEM data, metadata, coordinate system info, and documentation" 
+                                   FontWeight="SemiBold" 
+                                   Foreground="DarkGreen" 
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                    
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="📡" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock Text="AgOpenGPS-compatible coordinate system" 
+                                   FontWeight="SemiBold" 
+                                   Foreground="DarkGreen" 
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- File Contents Section -->
+            <Border BorderBrush="LightBlue" BorderThickness="1" Padding="15" Margin="0,0,0,20">
+                <StackPanel>
+                    <TextBlock Text="File Contents" 
+                               FontSize="16" 
+                               FontWeight="SemiBold" 
+                               Margin="0,0,0,10"/>
+                    
+                    <TextBlock Text="Your .RgFdem file will contain:" 
+                               FontSize="14" 
+                               Margin="0,0,0,10"/>
+                    
+                    <StackPanel Orientation="Horizontal" Margin="0,3">
+                        <TextBlock Text="•" FontWeight="Bold" Margin="0,0,10,0"/>
+                        <TextBlock Text="metadata.json - Complete DEM parameters and field information"/>
+                    </StackPanel>
+                    
+                    <StackPanel Orientation="Horizontal" Margin="0,3">
+                        <TextBlock Text="•" FontWeight="Bold" Margin="0,0,10,0"/>
+                        <TextBlock Text="elevation.dem - Binary elevation data (high precision)"/>
+                    </StackPanel>
+                    
+                    <StackPanel Orientation="Horizontal" Margin="0,3">
+                        <TextBlock Text="•" FontWeight="Bold" Margin="0,0,10,0"/>
+                        <TextBlock Text="coordinate_system.txt - AgOpenGPS coordinate system info"/>
+                    </StackPanel>
+                    
+                    <StackPanel Orientation="Horizontal" Margin="0,3">
+                        <TextBlock Text="•" FontWeight="Bold" Margin="0,0,10,0"/>
+                        <TextBlock Text="README.txt - Human-readable documentation"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Preview Section -->
+            <Border BorderBrush="LightBlue" BorderThickness="2" Padding="15" Background="AliceBlue">
+                <StackPanel>
+                    <TextBlock Text="Export Preview" 
+                               FontSize="16" 
+                               FontWeight="SemiBold" 
+                               Margin="0,0,0,10"/>
+                    
+                    <TextBlock x:Name="PreviewTextBlock" 
+                               Text="Estimated file size: ~2.1 MB | Single RgF DEM file" 
+                               FontSize="12" 
+                               Margin="0,0,0,5"/>
+                    
+                    <TextBlock x:Name="FilenamePreviewTextBlock" 
+                               Text="Filename: MyFarm_BackPaddock_240724.RgFdem" 
+                               FontSize="12" 
+                               FontStyle="Italic" 
+                               Margin="0,0,0,5"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Progress Bar (Initially Hidden) -->
+            <ProgressBar x:Name="ExportProgressBar" 
+                         Height="20" 
+                         Margin="0,20,0,10" 
+                         Visibility="Collapsed"/>
+            
+            <TextBlock x:Name="ProgressTextBlock" 
+                       Text="" 
+                       HorizontalAlignment="Center" 
+                       Margin="0,0,0,10" 
+                       Visibility="Collapsed"/>
+
+            <!-- Action Buttons -->
+            <StackPanel Orientation="Horizontal" 
+                        HorizontalAlignment="Right" 
+                        Margin="0,20,0,0">
+                <Button x:Name="BackButton" 
+                        Content="← Back" 
+                        Width="100" 
+                        Height="35" 
+                        Margin="0,0,10,0" 
+                        Click="BackButton_Click"/>
+                <Button x:Name="ExportButton" 
+                        Content="Export RgF DEM" 
+                        Width="120" 
+                        Height="35" 
+                        Background="Green" 
+                        Foreground="White" 
+                        FontWeight="SemiBold" 
+                        Click="ExportButton_Click"/>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

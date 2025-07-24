@@ -32,6 +32,8 @@ namespace DEMBuilder
 
         private double _referenceLatitude;
         private double _referenceLongitude;
+        private TriangleNet.Geometry.Rectangle _bounds = new TriangleNet.Geometry.Rectangle();
+        private double[,]? _rasterData;
         private string _farmName = string.Empty;
         private string _fieldName = string.Empty;
         private System.Windows.Media.Imaging.BitmapSource? _demPreviewBitmap;
@@ -43,6 +45,9 @@ namespace DEMBuilder
         private readonly DemGenerationPage _demGenerationPage;
         private readonly DemPreviewPage _demPreviewPage;
         private readonly ExportPage _exportPage;
+        private readonly TextFileOptionsPage _textFileOptionsPage;
+        private readonly GeoTiffOptionsPage _geoTiffOptionsPage;
+        private readonly RgFdemOptionsPage _rgFdemOptionsPage;
         private readonly List<System.Windows.Controls.UserControl> _wizardPages;
         private int _currentPageIndex = 0;
 
@@ -65,6 +70,9 @@ namespace DEMBuilder
             _demGenerationPage = new DemGenerationPage();
             _demPreviewPage = new DemPreviewPage();
             _exportPage = new ExportPage();
+            _textFileOptionsPage = new TextFileOptionsPage();
+            _geoTiffOptionsPage = new GeoTiffOptionsPage();
+            _rgFdemOptionsPage = new RgFdemOptionsPage();
 
             _wizardPages = new List<System.Windows.Controls.UserControl>
             {
@@ -94,8 +102,13 @@ namespace DEMBuilder
             _demPreviewPage.GoBackRequested += GoToPreviousPage;
             _demPreviewPage.GoToNextPage += GoToNextPage;
 
-            _exportPage.RestartRequested += ExportPage_RestartRequested;
-            _exportPage.GoBackRequested += ExportPage_GoBackRequested;
+            _exportPage.FormatSelected += ExportPage_FormatSelected;
+            _exportPage.BackRequested += ExportPage_BackRequested;
+            
+            // Format-specific options pages event handlers
+            _textFileOptionsPage.BackRequested += FormatOptionsPage_BackRequested;
+            _geoTiffOptionsPage.BackRequested += FormatOptionsPage_BackRequested;
+            _rgFdemOptionsPage.BackRequested += FormatOptionsPage_BackRequested;
         }
 
         private void InitializeMap()
@@ -184,7 +197,10 @@ namespace DEMBuilder
                 }
                 else if (_wizardPages[_currentPageIndex] is ExportPage)
                 {
-                    _exportPage.SetData(_projectedGpsPoints, _referenceLatitude, _referenceLongitude, _farmName, _fieldName);
+                    if (_rasterData != null)
+                    {
+                        _exportPage.SetExportData(_rasterData, _bounds, _referenceLatitude, _referenceLongitude, _farmName, _fieldName);
+                    }
                 }
 
                 // Hide main navigation when on the last page
@@ -244,37 +260,56 @@ namespace DEMBuilder
 
         private void DemGenerationPage_DemGenerationCompleted(object? sender, DemGenerationCompletedEventArgs e)
         {
+            // Store the DEM generation results for export
+            _rasterData = e.RasterData;
+            _bounds = e.Bounds;
+            
+            // Create preview bitmap for display
             _demPreviewBitmap = new Services.Dem.DemGenerationService().CreateDemBitmap(e.RasterData);
             GoToNextPage();
         }
 
-        private void ExportPage_RestartRequested(object? sender, EventArgs e)
+        private void ExportPage_FormatSelected(object? sender, ExportFormatSelectedEventArgs e)
         {
-            // Reset state to allow for a new boundary selection
-            _isDrawingBoundary = false;
-            _isBoundaryApplied = false;
-            _boundaryPolygon = null;
-            _projectedGpsPoints = null;
-            _excludedGpsPoints = null;
-            _currentFilteredGpsPoints = _allGpsPoints;
-            _displayedGpsPoints = _allGpsPoints;
+            // Set export data for the selected format-specific options page
+            if (_rasterData != null)
+            {
+                switch (e.SelectedFormat)
+                {
+                    case ExportFormat.TextFile:
+                        _textFileOptionsPage.SetExportData(_rasterData, _bounds, _referenceLatitude, _referenceLongitude, _farmName, _fieldName);
+                        WizardFrame.Content = _textFileOptionsPage;
+                        break;
+                    case ExportFormat.GeoTiff:
+                        _geoTiffOptionsPage.SetExportData(_rasterData, _bounds, _referenceLatitude, _referenceLongitude, _farmName, _fieldName);
+                        WizardFrame.Content = _geoTiffOptionsPage;
+                        break;
+                    case ExportFormat.RgFdem:
+                        _rgFdemOptionsPage.SetExportData(_rasterData, _bounds, _referenceLatitude, _referenceLongitude, _farmName, _fieldName);
+                        WizardFrame.Content = _rgFdemOptionsPage;
+                        break;
+                }
+                
+                // Hide main navigation buttons since format-specific pages have their own
+                NextButton.Visibility = Visibility.Collapsed;
+                BackButton.Visibility = Visibility.Collapsed;
+            }
+        }
 
-            // Go back to the Boundary Page (index 1)
-            _currentPageIndex = 1;
-            WizardFrame.Content = _wizardPages[_currentPageIndex];
+        private void ExportPage_BackRequested(object? sender, EventArgs e)
+        {
+            GoToPreviousPage();
+        }
 
+        private void FormatOptionsPage_BackRequested(object? sender, EventArgs e)
+        {
+            // Navigate back to the Export Page (format selection)
+            WizardFrame.Content = _exportPage;
+            
             // Restore main navigation buttons
             NextButton.Visibility = Visibility.Visible;
             BackButton.Visibility = Visibility.Visible;
-
             UpdateNavigationButtons();
-            UpdateMapWithPoints(true);
-            _boundaryPage.Reset();
-        }
-
-        private void ExportPage_GoBackRequested(object? sender, EventArgs e)
-        {
-            GoToPreviousPage();
         }
 
         private void UpdateMapWithPoints(bool zoomToFit)
