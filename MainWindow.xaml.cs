@@ -1,26 +1,28 @@
 using DEMBuilder.Models;
 using DEMBuilder.Pages;
 using DEMBuilder.Services;
+using DEMBuilder.Services.Boundary;
 using GMap.NET;
 using GMap.NET.MapProviders;
 using GMap.NET.WindowsPresentation;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
-using Gdal = MaxRev.Gdal.Core.Gdal;
-
-
 
 namespace DEMBuilder
 {
     public partial class MainWindow : Window
     {
         private readonly NmeaParserService _nmeaParserService;
+        private readonly HighPerformanceBoundaryFilter _boundaryFilterService;
+        private CancellationTokenSource? _boundaryFilterCancellation;
         private List<GpsPoint>? _allGpsPoints;
         private List<GpsPoint>? _displayedGpsPoints;
         private List<GpsPoint>? _pointsBeforeBoundaryFilter;
@@ -51,11 +53,10 @@ namespace DEMBuilder
         public MainWindow()
         {
             InitializeComponent();
-            Gdal.ConfigureAll();
-            System.Windows.MessageBox.Show("GDAL configured successfully! We are running on ARM64!");
             InitializeMap();
 
             _nmeaParserService = new NmeaParserService();
+            _boundaryFilterService = new HighPerformanceBoundaryFilter();
 
             _loadDataPage = new LoadDataPage();
             _filterDataPage = new FilterDataPage();
@@ -404,35 +405,96 @@ namespace DEMBuilder
                     MainMap.Markers.Remove(_boundaryPolygon);
                     _boundaryPolygon = null;
                 }
-
+                
                 _boundaryPage.ShowStatusMessage($"{deletedCount} points were permanently deleted.");
             }
         }
 
-        private void BoundaryPage_BoundaryApplied(object? sender, BoundaryAppliedEventArgs e)
+        private async void BoundaryPage_BoundaryApplied(object? sender, BoundaryAppliedEventArgs e)
         {
-            if (_allGpsPoints == null || !_allGpsPoints.Any())
+            try
             {
-                System.Windows.MessageBox.Show("No GPS data loaded to define a boundary.", "No Data", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
-                return;
-            }
-            if (e.BoundaryPoints.Count < 3)
-            {
-                System.Windows.MessageBox.Show("Please define a valid boundary with at least 3 points.", "Invalid Boundary", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
-                return;
-            }
+                if (_allGpsPoints == null || !_allGpsPoints.Any())
+                {
+                    System.Windows.MessageBox.Show("No GPS data loaded to define a boundary.", "No Data", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                    return;
+                }
+                if (e.BoundaryPoints.Count < 3)
+                {
+                    System.Windows.MessageBox.Show("Please define a valid boundary with at least 3 points.", "Invalid Boundary", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                    return;
+                }
 
-            _farmName = e.FarmName;
-            _fieldName = e.FieldName;
-            _pointsBeforeBoundaryFilter = new List<GpsPoint>(_allGpsPoints);
-            var filteredByBoundaryPoints = _allGpsPoints.Where(p => IsPointInPolygon(p.AsPointLatLng(), e.BoundaryPoints)).ToList();
-            _displayedGpsPoints = filteredByBoundaryPoints;
-            _currentFilteredGpsPoints = new List<GpsPoint>(_displayedGpsPoints);
-            _excludedGpsPoints = null;
-            UpdateMapWithPoints(true);
-            _boundaryPage.ShowStatusMessage($"{_displayedGpsPoints.Count} points selected for Farm: '{_farmName}', Field: '{_fieldName}'.");
-            _isBoundaryApplied = true;
-            UpdateNavigationButtons();
+            // Show progress bar and start filtering
+            _boundaryPage.ShowProgressBar();
+            _boundaryPage.ShowStatusMessage("Filtering GPS points by boundary...");
+
+            // Setup cancellation
+            _boundaryFilterCancellation = new CancellationTokenSource();
+
+            try
+            {
+                // Use high-performance boundary filtering service
+                var result = await _boundaryFilterService.FilterPointsByBoundaryAsync(
+                    _allGpsPoints, e.BoundaryPoints, e.FarmName, e.FieldName,
+                    new Progress<BoundaryFilterProgress>(progress =>
+                    {
+                        // Update progress bar and status on UI thread
+                        Dispatcher.Invoke(() =>
+                        {
+                            _boundaryPage.UpdateProgress(progress.PercentComplete);
+                            _boundaryPage.ShowStatusMessage($"Processing: {progress.PercentComplete:F0}% complete...");
+                        });
+                    }),
+                    _boundaryFilterCancellation.Token);
+
+                if (result.Success)
+                {
+                    _farmName = e.FarmName;
+                    _fieldName = e.FieldName;
+                    _pointsBeforeBoundaryFilter = new List<GpsPoint>(_allGpsPoints);
+                    _displayedGpsPoints = result.FilteredPoints;
+                    _currentFilteredGpsPoints = new List<GpsPoint>(_displayedGpsPoints);
+                    _excludedGpsPoints = null;
+                    
+                    UpdateMapWithPoints(true);
+                    
+                    _boundaryPage.HideProgressBar();
+                    var successMessage = $"✅ {result.PointsInBoundary:N0} points selected for Farm: '{_farmName}', Field: '{_fieldName}'";
+                    _boundaryPage.ShowStatusMessage(successMessage);
+                    
+                    _isBoundaryApplied = true;
+                    UpdateNavigationButtons();
+                }
+                else
+                {
+                    _boundaryPage.HideProgressBar();
+                    _boundaryPage.ShowStatusMessage($"❌ Boundary filtering failed: {result.ErrorMessage}");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                _boundaryPage.HideProgressBar();
+                _boundaryPage.ShowStatusMessage("⏹️ Boundary filtering cancelled by user.");
+            }
+            catch (Exception ex)
+            {
+                _boundaryPage.HideProgressBar();
+                _boundaryPage.ShowStatusMessage($"⚠️ Boundary filtering error: {ex.Message}");
+            }
+            finally
+            {
+                _boundaryFilterCancellation?.Dispose();
+                _boundaryFilterCancellation = null;
+            }
+            }
+            catch (Exception globalEx)
+            {
+                // Catch any exception that might prevent the method from running
+                _boundaryPage.HideProgressBar();
+                _boundaryPage.ShowStatusMessage($"🚨 Critical error in boundary assignment: {globalEx.Message}");
+                System.Windows.MessageBox.Show($"Boundary assignment failed with error: {globalEx.Message}\n\nStack trace: {globalEx.StackTrace}", "Critical Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+            }
         }
 
         private void MainMap_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

@@ -93,8 +93,23 @@ namespace DEMBuilder.Pages
 
         public void ShowStatusMessage(string message)
         {
-            StatusTextBlock.Text = message;
-            StatusTextBlock.Visibility = Visibility.Visible;
+            BoundaryStatusTextBlock.Text = message;
+        }
+
+        public void ShowProgressBar()
+        {
+            BoundaryProgressBar.Visibility = Visibility.Visible;
+            BoundaryProgressBar.Value = 0;
+        }
+
+        public void HideProgressBar()
+        {
+            BoundaryProgressBar.Visibility = Visibility.Collapsed;
+        }
+
+        public void UpdateProgress(double percentage)
+        {
+            BoundaryProgressBar.Value = Math.Max(0, Math.Min(100, percentage));
         }
 
         public void Reset()
@@ -102,7 +117,7 @@ namespace DEMBuilder.Pages
             FarmNameTextBox.Text = string.Empty;
             FieldNameTextBox.Text = string.Empty;
             BoundaryStatusTextBlock.Text = "Click 'Start Drawing' to define a new boundary.";
-            StatusTextBlock.Visibility = Visibility.Collapsed;
+            HideProgressBar();
             StartDrawingButton.IsEnabled = true;
             FinishDrawingButton.IsEnabled = false;
             FarmFieldInputPanel.IsEnabled = false;

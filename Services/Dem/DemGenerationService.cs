@@ -122,7 +122,7 @@ namespace DEMBuilder.Services.Dem
 
                 if (process.ExitCode != 0)
                 {
-                    string errorMessage = string.IsNullOrWhiteSpace(error) ? "An unknown error occurred with GDAL." : error;
+                    string errorMessage = string.IsNullOrWhiteSpace(error) ? "An unknown error occurred during conversion." : error;
                     Console.WriteLine("GDAL Error: " + errorMessage);
                     return (false, errorMessage);
                 }

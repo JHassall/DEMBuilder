@@ -1,8 +1,11 @@
 using DEMBuilder.Models;
+using DEMBuilder.Services.Filter;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -13,10 +16,13 @@ namespace DEMBuilder.Pages
         public event EventHandler<FilterAppliedEventArgs>? FilterApplied;
 
         private List<GpsPoint> _allGpsPoints = new List<GpsPoint>();
+        private readonly HighPerformanceFilter _filterService;
+        private CancellationTokenSource? _filterCancellation;
 
         public FilterDataPage()
         {
             InitializeComponent();
+            _filterService = new HighPerformanceFilter();
         }
 
         public void SetGpsPoints(List<GpsPoint>? points)
@@ -54,51 +60,117 @@ namespace DEMBuilder.Pages
             }
         }
 
-        private void ApplyFilterButton_Click(object sender, RoutedEventArgs e)
+        private async void ApplyFilterButton_Click(object sender, RoutedEventArgs e)
         {
             if (!_allGpsPoints.Any()) return;
 
-            var originalCount = _allGpsPoints.Count;
-            IEnumerable<GpsPoint> filteredPoints = _allGpsPoints;
-
-            // 1. Filter by HDOP
-            if (double.TryParse(MaxHdopTextBox.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out double maxHdop))
+            try
             {
-                filteredPoints = filteredPoints.Where(p => p.Hdop <= maxHdop);
-            }
+                // Disable button during processing
+                ApplyFilterButton.IsEnabled = false;
+                
+                // Show progress bar and start filtering
+                ShowProgressBar();
+                ShowStatusMessage("Applying filters to GPS points...");
 
-            // 2. Filter by RTK Status
-            var selectedFixQualities = new HashSet<int>();
-            foreach (System.Windows.Controls.CheckBox checkBox in RtkStatusPanel.Children.OfType<System.Windows.Controls.CheckBox>())
-            {
-                if (checkBox.IsChecked == true && int.TryParse(checkBox.Tag.ToString(), out int tag))
+                // Build filter criteria
+                var criteria = new FilterCriteria();
+                
+                // 1. HDOP filter
+                if (double.TryParse(MaxHdopTextBox.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out double maxHdop))
                 {
-                    selectedFixQualities.Add(tag);
+                    criteria.MaxHdop = maxHdop;
+                }
+
+                // 2. RTK Status filter
+                var selectedFixQualities = new HashSet<int>();
+                foreach (System.Windows.Controls.CheckBox checkBox in RtkStatusPanel.Children.OfType<System.Windows.Controls.CheckBox>())
+                {
+                    if (checkBox.IsChecked == true && int.TryParse(checkBox.Tag.ToString(), out int tag))
+                    {
+                        selectedFixQualities.Add(tag);
+                    }
+                }
+                criteria.AllowedFixQualities = selectedFixQualities;
+
+                // 3. Age of Differential filter
+                if (double.TryParse(MaxAgeOfDiffTextBox.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out double maxAge))
+                {
+                    criteria.MaxAgeOfDiff = maxAge;
+                }
+
+                // Setup cancellation
+                _filterCancellation = new CancellationTokenSource();
+
+                // Use high-performance filtering service
+                var result = await _filterService.FilterPointsAsync(
+                    _allGpsPoints, criteria,
+                    new Progress<FilterProgress>(progress =>
+                    {
+                        // Update progress bar and status on UI thread
+                        Dispatcher.Invoke(() =>
+                        {
+                            UpdateProgress(progress.PercentComplete);
+                            ShowStatusMessage($"Processing: {progress.PercentComplete:F0}% complete...");
+                        });
+                    }),
+                    _filterCancellation.Token);
+
+                if (result.Success)
+                {
+                    HideProgressBar();
+                    var successMessage = $"✅ Filter applied: {result.PointsIncluded:N0} included, {result.PointsExcluded:N0} excluded";
+                    ShowStatusMessage(successMessage);
+                    
+                    TotalPointsText.Text = $"Total Points: {_allGpsPoints.Count}";
+                    FilteredPointsText.Text = $"Included Points: {result.PointsIncluded}";
+                    ExcludedPointsText.Text = $"Excluded Points: {result.PointsExcluded}";
+
+                    FilterApplied?.Invoke(this, new FilterAppliedEventArgs(result.FilteredPoints, result.ExcludedPoints));
+                }
+                else
+                {
+                    HideProgressBar();
+                    ShowStatusMessage($"❌ Filtering failed: {result.ErrorMessage}");
                 }
             }
-
-            if (selectedFixQualities.Any())
+            catch (OperationCanceledException)
             {
-                filteredPoints = filteredPoints.Where(p => selectedFixQualities.Contains(p.FixQuality));
+                HideProgressBar();
+                ShowStatusMessage("⏹️ Filtering cancelled by user.");
             }
-
-            // 3. Filter by Age of Differential
-            if (double.TryParse(MaxAgeOfDiffTextBox.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out double maxAge))
+            catch (Exception ex)
             {
-                filteredPoints = filteredPoints.Where(p => p.AgeOfDiff <= maxAge);
+                HideProgressBar();
+                ShowStatusMessage($"⚠️ Filtering error: {ex.Message}");
             }
+            finally
+            {
+                _filterCancellation?.Dispose();
+                _filterCancellation = null;
+                ApplyFilterButton.IsEnabled = true;
+            }
+        }
 
-            var finalList = filteredPoints.ToList();
-            var excludedList = _allGpsPoints.Except(finalList).ToList();
-            var newCount = finalList.Count;
-            var excludedCount = excludedList.Count;
+        public void ShowProgressBar()
+        {
+            FilterProgressBar.Visibility = Visibility.Visible;
+            FilterProgressBar.Value = 0;
+        }
 
-            FilterSummaryTextBlock.Text = $"Filter applied. Please click 'Next' to continue.";
-            TotalPointsText.Text = $"Total Points: {originalCount}";
-            FilteredPointsText.Text = $"Included Points: {newCount}";
-            ExcludedPointsText.Text = $"Excluded Points: {excludedCount}";
+        public void HideProgressBar()
+        {
+            FilterProgressBar.Visibility = Visibility.Collapsed;
+        }
 
-            FilterApplied?.Invoke(this, new FilterAppliedEventArgs(finalList, excludedList));
+        public void UpdateProgress(double percentage)
+        {
+            FilterProgressBar.Value = Math.Max(0, Math.Min(100, percentage));
+        }
+
+        public void ShowStatusMessage(string message)
+        {
+            FilterSummaryTextBlock.Text = message;
         }
     }
 }

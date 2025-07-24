@@ -9,23 +9,18 @@
 		<UseWindowsForms>true</UseWindowsForms>
 		<EnableWindowsTargeting>true</EnableWindowsTargeting>
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
-		<GdalCoreNativeSkip>true</GdalCoreNativeSkip>
+		<!-- Suppress warnings from GDAL NuGet package -->
+		<NoWarn>$(NoWarn);CS8600</NoWarn>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<PackageReference Include="GMap.NET.Core" Version="2.1.7" />
 		<PackageReference Include="GMap.NET.WinPresentation" Version="2.1.7" />
-		<PackageReference Include="MaxRev.Gdal.Core" Version="3.11.1.337" />
 		<PackageReference Include="Ookii.Dialogs.Wpf" Version="5.0.1" />
 		<PackageReference Include="Unofficial.Triangle.NET" Version="0.0.1" />
 		<PackageReference Include="System.Data.SQLite" Version="1.0.118" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<None Include="C:\vcpkg\buildtrees\gdal\arm64-windows-rel\gdal.dll">
-			<Link>gdal.dll</Link>
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</None>
+		<PackageReference Include="GDAL" Version="3.8.4" />
+		<PackageReference Include="GDAL.Native" Version="3.8.4" />
 	</ItemGroup>
 
 </Project>

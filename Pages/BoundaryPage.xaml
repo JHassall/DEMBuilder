@@ -35,7 +35,10 @@
 
         <Button x:Name="ApplyBoundaryButton" Content="Assign" Click="ApplyBoundaryButton_Click" IsEnabled="False" Margin="0,15,0,0" Padding="10,5" MinWidth="150"/>
 
-        <TextBlock x:Name="BoundaryStatusTextBlock" Margin="0,10,0,0" TextWrapping="Wrap"/>
+        <!-- Progress Bar for Boundary Filtering -->
+        <ProgressBar x:Name="BoundaryProgressBar" Minimum="0" Maximum="100" Height="20" Margin="0,10,0,5" Visibility="Collapsed"/>
+        
+        <TextBlock x:Name="BoundaryStatusTextBlock" Margin="0,5,0,0" TextWrapping="Wrap"/>
 
     </StackPanel>
 </UserControl>
