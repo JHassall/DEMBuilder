@@ -86,6 +86,9 @@ namespace DEMBuilder
             };
 
             _loadDataPage.GpsDataLoaded += loadDataPage_GpsDataLoaded;
+            
+            // Set up duplicate detection by passing existing GPS points to LoadDataPage
+            UpdateLoadDataPageWithExistingPoints();
 
             _boundaryPage.StartDrawing += BoundaryPage_StartDrawing;
             _boundaryPage.FinishDrawing += BoundaryPage_FinishDrawing;
@@ -139,14 +142,64 @@ namespace DEMBuilder
             }
             else
             {
-                _allGpsPoints = e.GpsPoints;
-                _displayedGpsPoints = new List<GpsPoint>(e.GpsPoints);
-                _pointsBeforeBoundaryFilter = new List<GpsPoint>(e.GpsPoints);
-                _currentFilteredGpsPoints = new List<GpsPoint>(e.GpsPoints);
+                // Update GPS data collections
+                if (_allGpsPoints == null)
+                {
+                    // First import - no existing data
+                    _allGpsPoints = e.GpsPoints;
+                }
+                else
+                {
+                    // Subsequent import - add new points to existing data
+                    _allGpsPoints.AddRange(e.GpsPoints);
+                }
+                
+                _displayedGpsPoints = new List<GpsPoint>(_allGpsPoints);
+                _pointsBeforeBoundaryFilter = new List<GpsPoint>(_allGpsPoints);
+                _currentFilteredGpsPoints = new List<GpsPoint>(_allGpsPoints);
                 _excludedGpsPoints = null;
                 UpdateMapWithPoints(true);
+                
+                // Update LoadDataPage with current GPS points for future duplicate detection
+                UpdateLoadDataPageWithExistingPoints();
+                
+                // Show import summary with duplicate detection statistics
+                ShowImportSummary(e);
             }
             UpdateNavigationButtons();
+        }
+        
+        /// <summary>
+        /// Updates the LoadDataPage with current GPS points for duplicate detection
+        /// </summary>
+        private void UpdateLoadDataPageWithExistingPoints()
+        {
+            _loadDataPage.ExistingGpsPoints = _allGpsPoints;
+        }
+        
+        /// <summary>
+        /// Shows import summary with duplicate detection statistics
+        /// </summary>
+        private void ShowImportSummary(Pages.GpsDataLoadedEventArgs e)
+        {
+            var message = $"GPS Data Import Complete\n\n";
+            message += $"Total points processed: {e.TotalPointsProcessed:N0}\n";
+            message += $"Unique points imported: {e.GpsPoints.Count:N0}\n";
+            
+            if (e.DuplicateDetectionEnabled)
+            {
+                message += $"Duplicate points skipped: {e.DuplicatesSkipped:N0}\n";
+                var duplicatePercent = e.TotalPointsProcessed > 0 ? (e.DuplicatesSkipped * 100.0 / e.TotalPointsProcessed) : 0;
+                message += $"Duplicate rate: {duplicatePercent:F1}%\n";
+            }
+            else
+            {
+                message += "Duplicate detection: Disabled\n";
+            }
+            
+            message += $"\nTotal GPS points in database: {_allGpsPoints?.Count ?? 0:N0}";
+            
+            System.Windows.MessageBox.Show(message, "Import Summary", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void GoToNextPage(object? sender, EventArgs e)

@@ -22,6 +22,11 @@
         </Grid>
 
         <CheckBox x:Name="IncludeSubfoldersCheckBox" Content="Include Subfolders" Margin="0,10,0,0" IsChecked="True"/>
+        
+        <CheckBox x:Name="SkipDuplicatesCheckBox" Content="Skip Duplicate GPS Points" Margin="0,10,0,0" IsChecked="True"/>
+        <TextBlock TextWrapping="Wrap" Margin="20,5,0,0" FontSize="11" Foreground="Gray">
+            When enabled, GPS points with identical coordinates and elevation already in the database will be skipped during import.
+        </TextBlock>
 
         <StackPanel x:Name="ImportPanel" Visibility="Collapsed" Margin="0,15,0,0">
             <TextBlock x:Name="FileCountTextBlock" Margin="0,0,0,10"/>
